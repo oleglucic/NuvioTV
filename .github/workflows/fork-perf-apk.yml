@@ -1,8 +1,8 @@
-name: Debuggable tracing APK (fork only)
+name: Fork perf test APK (fork only)
 
 on:
   push:
-    branches: [ci/compose-trace-nd]
+    branches: [ci/perf-base, ci/perf-test]
 
 permissions:
   contents: read
@@ -40,24 +40,17 @@ jobs:
             touch local.dev.properties
           fi
 
-      - name: Prepare CI signing config
+      - name: Prepare stable fork test signing
+        env:
+          KS_B64: ${{ secrets.FORK_TEST_KEYSTORE_B64 }}
+          KS_PASSWORD: ${{ secrets.FORK_TEST_KEYSTORE_PASSWORD }}
         run: |
-          keytool -genkeypair \
-            -v \
-            -keystore "$RUNNER_TEMP/ci-debug.jks" \
-            -storepass android \
-            -alias androiddebugkey \
-            -keypass android \
-            -dname "CN=Android Debug,O=Android,C=US" \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000
-
+          printf '%s' "$KS_B64" | base64 --decode > "$RUNNER_TEMP/fork-test.jks"
           {
-            echo "NUVIO_RELEASE_STORE_FILE=$RUNNER_TEMP/ci-debug.jks"
-            echo "NUVIO_RELEASE_KEY_ALIAS=androiddebugkey"
-            echo "NUVIO_RELEASE_KEY_PASSWORD=android"
-            echo "NUVIO_RELEASE_STORE_PASSWORD=android"
+            echo "NUVIO_RELEASE_STORE_FILE=$RUNNER_TEMP/fork-test.jks"
+            echo "NUVIO_RELEASE_KEY_ALIAS=nuviotest"
+            echo "NUVIO_RELEASE_KEY_PASSWORD=$KS_PASSWORD"
+            echo "NUVIO_RELEASE_STORE_PASSWORD=$KS_PASSWORD"
           } >> "$GITHUB_ENV"
 
       - name: Test updater and build fullDebug APK
