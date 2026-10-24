@@ -916,7 +916,9 @@ internal fun PlayerRuntimeController.initializePlayer(
                 bluetoothForcePcm = isBluetoothAudioOutput,
                 playbackSpeedProvider = { _uiState.value.playbackSpeed },
                 initialForcePcm = hasTriedAudioPcmFallback || isBluetoothAudioOutput,
-                preferSoftwareAudioOnly = isBluetoothAudioOutput,
+                // Only the user's own "prefer" setting should move video onto extension decoders.
+                preferSoftwareAudioOnly = isBluetoothAudioOutput ||
+                    playerSettings.decoderPriority != DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER,
                 mapDv7ToHevc = mapDv7ToHevcEnabled,
                 onPlaybackSpeedAwareAudioSinkCreated = { playbackSpeedAwareAudioSink = it },
                 onFfmpegAudioRendererChanged = { renderer ->
@@ -1002,6 +1004,12 @@ internal fun PlayerRuntimeController.initializePlayer(
             disposeExoPlayerBeforeRebuild()
             delay(PLAYER_REBUILD_SETTLE_DELAY_MS)
             if (!afrPreflightGate.isCurrent(afrPreflightToken)) return@launch
+            // Left the foreground while preparing: build on return instead of claiming a decoder
+            // the foreground app may need. The resume rebuild uses currentStreamUrl.
+            if (isInBackground && url == currentStreamUrl) {
+                pendingBackgroundCrashRecovery = true
+                return@launch
+            }
 
             _exoPlayer = if (useLibass) {
                 // Set libass render scale before building the player - this controls
@@ -2138,7 +2146,8 @@ private class SubtitleOffsetRenderersFactory(
     private val initialForcePcm: Boolean = false,
     /**
      * When true, [EXTENSION_RENDERER_MODE_PREFER] applies to audio only — video stays on the
-     * platform MediaCodec path so Bluetooth PCM policy does not force software video decode.
+     * platform MediaCodec path so an audio policy (Bluetooth PCM, PCM fallback, forced
+     * passthrough) does not force software video decode.
      */
     private val preferSoftwareAudioOnly: Boolean = false,
     private val mapDv7ToHevc: Boolean = false,
