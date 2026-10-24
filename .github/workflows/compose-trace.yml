@@ -1,8 +1,8 @@
-name: Verify low-spec fixes (fork only)
+name: Debuggable tracing APK (fork only)
 
 on:
   push:
-    branches: [ci/verify-low-spec]
+    branches: [ci/compose-trace]
 
 permissions:
   contents: read
@@ -61,7 +61,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Test updater and build fullDebug APK
-        run: ./gradlew :app:testFullDebugUnitTest :app:assembleFullDebug --continue --stacktrace
+        run: ./gradlew :app:assembleFullDebug -Pdebuggable=true --stacktrace
 
       - name: Upload test reports
         if: always()

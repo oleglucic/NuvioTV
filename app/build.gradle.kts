@@ -590,6 +590,8 @@ dependencies {
     // Performance profiling
     implementation("androidx.metrics:metrics-performance:1.0.0-rc01")  // JankStats
     debugImplementation("androidx.compose.runtime:runtime-tracing")
+    // Fork-only: bundle the Perfetto SDK binary so composition tracing works on this test build.
+    debugImplementation("androidx.tracing:tracing-perfetto-binary:1.0.1")
 
     add("fullImplementation", "org.webjars.npm:crypto-js:4.2.0")
 
