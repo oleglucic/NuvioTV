@@ -30,6 +30,7 @@ import com.nuvio.tv.data.local.ImagePerformancePreferences
 import com.nuvio.tv.data.local.SentrySettingsDataStore
 import com.nuvio.tv.data.mediaserver.ServerUserStateProjection
 import com.nuvio.tv.data.simkl.SimklAnimeIdPreferenceHolder
+import com.nuvio.tv.ui.screens.settings.MemoryBudget
 import dagger.hilt.android.HiltAndroidApp
 import okhttp3.Cookie
 import okhttp3.CookieJar
@@ -79,7 +80,10 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
         }
     }
 
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     override fun onCreate() {
+        // Before super.onCreate(): Hilt creates injected services there, and the budget is read once.
+        MemoryBudget.init(this)
         super.onCreate()
         SentryInitializer.start(this, sentrySettingsDataStore)
         PluginRuntimeHooks.onApplicationCreate(this)
@@ -157,9 +161,16 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
                     totalRamMb <= 3072 -> 0.20
                     else -> 0.25
                 }
-                MemoryCache.Builder()
-                    .maxSizePercent(context, cachePercent)
-                    .build()
+                // maxSizePercent takes the share of largeMemoryClass under largeHeap (512 MB on
+                // 1 GB TVs, ~77 MB of bitmaps), so a device the platform marks low-RAM takes it of
+                // the standard memory class instead.
+                val builder = MemoryCache.Builder()
+                if (activityManager.isLowRamDevice) {
+                    builder.maxSizeBytes((activityManager.memoryClass * 1024L * 1024L * cachePercent).toLong())
+                } else {
+                    builder.maxSizePercent(context, cachePercent)
+                }
+                builder.build()
             }
             .diskCache {
                 DiskCache.Builder()
