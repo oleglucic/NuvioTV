@@ -61,7 +61,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Test updater and build fullDebug APK
-        run: ./gradlew :app:assembleFullDebug -Pdebuggable=true -x :app:compileFullDebugArtProfile --stacktrace
+        run: ./gradlew :app:assembleFullDebug -Pdebuggable=true -x :app:compileFullDebugArtProfile -x :app:embedFullDebugUpdateDexMetadata --stacktrace
 
       - name: Upload test reports
         if: always()
