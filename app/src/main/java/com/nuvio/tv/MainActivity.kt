@@ -1139,8 +1139,30 @@ open class MainActivity : ComponentActivity() {
 
                     val updateViewModel: UpdateViewModel = hiltViewModel(this@MainActivity)
                     val updateState by updateViewModel.uiState.collectAsState()
-                    val updateBannerState = updateState.copy(
-                        showBanner = updateState.showBanner && currentRoute?.startsWith("player/") != true
+                    // FORK-ONLY screenshot build: fake download sweeping 2% -> 90% every 20 s.
+                    val shotProgress by androidx.compose.animation.core.rememberInfiniteTransition(label = "shot")
+                        .animateFloat(
+                            initialValue = 0.02f,
+                            targetValue = 0.9f,
+                            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                                androidx.compose.animation.core.tween(20_000, easing = androidx.compose.animation.core.LinearEasing)
+                            ),
+                            label = "shotProgress"
+                        )
+                    val updateBannerState = com.nuvio.tv.updater.UpdateUiState(
+                        update = com.nuvio.tv.updater.model.AppUpdate(
+                            tag = "v0.9.0",
+                            title = "v0.9.0",
+                            notes = "Screenshot build",
+                            releaseUrl = null,
+                            assetName = "app.apk",
+                            assetUrl = "",
+                            assetSizeBytes = 48_000_000L
+                        ),
+                        isUpdateAvailable = true,
+                        isDownloading = true,
+                        downloadProgress = shotProgress,
+                        showBanner = currentRoute?.startsWith("player/") != true
                     )
 
                     UpdateBannerHost(
