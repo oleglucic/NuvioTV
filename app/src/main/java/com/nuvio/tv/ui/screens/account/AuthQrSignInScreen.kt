@@ -68,6 +68,8 @@ import com.nuvio.tv.ui.components.BrandWordmark
 import com.nuvio.tv.ui.components.SkeletonBar
 import com.nuvio.tv.ui.components.rememberShimmerBrush
 import com.nuvio.tv.ui.screens.detail.requestFocusAfterFrames
+import com.nuvio.tv.ui.util.drawDitheredRect
+import com.nuvio.tv.ui.util.ditheredPaint
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -837,8 +839,9 @@ private fun Modifier.authGradientBackground(): Modifier = drawWithCache {
         start = start,
         end = end
     )
+    val paint = ditheredPaint(brush, size)
     onDrawBehind {
-        drawRect(brush = brush)
+        drawDitheredRect(paint, Offset.Zero, size)
     }
 }
 

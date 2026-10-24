@@ -57,6 +57,8 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.nuvio.tv.ui.util.LocalRecompositionHighlighterEnabled
 import com.nuvio.tv.ui.util.contentTextDirection
+import com.nuvio.tv.ui.util.drawDitheredRect
+import com.nuvio.tv.ui.util.ditheredPaint
 import com.nuvio.tv.ui.util.recompositionHighlighter
 import coil3.request.transitionFactory
 import com.nuvio.tv.R
@@ -275,21 +277,19 @@ internal fun ModernHeroGradientLayer(
                     endY = size.height
                 )
 
+                val rectLeft = if (isRtl) size.width - horizontalFadeEndX else 0f
+                val horizontalSize = Size(horizontalFadeEndX, size.height)
+                val verticalSize = Size(size.width, size.height - bottomStripStartY)
+                // Shaders take the full draw size, as drawRect(brush = ...) does.
+                val horizontalPaint = ditheredPaint(horizontalGradient, size)
+                val verticalPaint = ditheredPaint(verticalGradient, size)
+
                 onDrawBehind {
                     // 1. Horizontal fade (reversed in RTL)
-                    val rectLeft = if (isRtl) size.width - horizontalFadeEndX else 0f
-                    drawRect(
-                        brush = horizontalGradient,
-                        topLeft = Offset(rectLeft, 0f),
-                        size = Size(horizontalFadeEndX, size.height)
-                    )
-                    
+                    drawDitheredRect(horizontalPaint, Offset(rectLeft, 0f), horizontalSize)
+
                     // 2. Bottom vertical strip
-                    drawRect(
-                        brush = verticalGradient,
-                        topLeft = Offset(0f, bottomStripStartY),
-                        size = Size(size.width, size.height - bottomStripStartY)
-                    )
+                    drawDitheredRect(verticalPaint, Offset(0f, bottomStripStartY), verticalSize)
                 }
             }
     )

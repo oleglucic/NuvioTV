@@ -3,6 +3,10 @@ package com.nuvio.tv.ui.screens.profile
 import androidx.tv.material3.MaterialTheme
 import com.nuvio.tv.ui.theme.NuvioPrimitives
 import com.nuvio.tv.ui.util.contentTextDirection
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
+import com.nuvio.tv.ui.util.drawDitheredRect
+import com.nuvio.tv.ui.util.ditheredPaint
 import com.nuvio.tv.ui.theme.NuvioMotion
 
 import com.nuvio.tv.ui.theme.NuvioTheme
@@ -860,25 +864,33 @@ private fun ProfileSelectionBackground(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .background(
-                            brush = Brush.verticalGradient(
-                                colorStops = arrayOf(
-                                    0f to gradientTop,
-                                    0.42f to gradientMid,
-                                    1f to baseBg
-                                )
+                        .drawWithCache {
+                            val verticalPaint = ditheredPaint(
+                                Brush.verticalGradient(
+                                    colorStops = arrayOf(
+                                        0f to gradientTop,
+                                        0.42f to gradientMid,
+                                        1f to baseBg
+                                    )
+                                ),
+                                size
                             )
-                        )
-                        .background(
-                            brush = Brush.horizontalGradient(
-                                colorStops = arrayOf(
-                                    0f to halfFadeStrong,
-                                    0.45f to halfFadeSoft,
-                                    0.72f to Color.Transparent,
-                                    1f to Color.Transparent
-                                )
+                            val horizontalPaint = ditheredPaint(
+                                Brush.horizontalGradient(
+                                    colorStops = arrayOf(
+                                        0f to halfFadeStrong,
+                                        0.45f to halfFadeSoft,
+                                        0.72f to Color.Transparent,
+                                        1f to Color.Transparent
+                                    )
+                                ),
+                                size
                             )
-                        )
+                            onDrawBehind {
+                                drawDitheredRect(verticalPaint, Offset.Zero, size)
+                                drawDitheredRect(horizontalPaint, Offset.Zero, size)
+                            }
+                        }
                 )
             }
         }
