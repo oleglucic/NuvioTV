@@ -2,7 +2,7 @@ name: Debuggable tracing APK (fork only)
 
 on:
   push:
-    branches: [ci/compose-trace]
+    branches: [ci/compose-trace-nd]
 
 permissions:
   contents: read
@@ -61,7 +61,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Test updater and build fullDebug APK
-        run: ./gradlew :app:assembleFullDebug -Pdebuggable=true -x :app:compileFullDebugArtProfile --stacktrace
+        run: ./gradlew :app:assembleFullDebug --stacktrace
 
       - name: Upload test reports
         if: always()
