@@ -85,6 +85,12 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
         // Before super.onCreate(): Hilt creates injected services there, and the budget is read once.
         MemoryBudget.init(this)
         super.onCreate()
+        // Fork-only diagnostics: log every snapshot state change with its value.
+        androidx.compose.runtime.snapshots.Snapshot.registerApplyObserver { changed, _ ->
+            for (state in changed) {
+                android.util.Log.d("SnapDiag", "${state.javaClass.simpleName}@${System.identityHashCode(state)} ${state.toString().take(160)}")
+            }
+        }
         SentryInitializer.start(this, sentrySettingsDataStore)
         PluginRuntimeHooks.onApplicationCreate(this)
         androidTvChannelSyncService.start()

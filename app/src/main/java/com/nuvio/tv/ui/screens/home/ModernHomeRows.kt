@@ -266,6 +266,7 @@ private fun ModernCatalogRowItem(
         is ModernPayload.ContinueWatching -> error("Unsupported payload for ModernCatalogRowItem")
     }
 
+    androidx.compose.runtime.SideEffect { android.util.Log.d("RowItemDiag", "recomposed $focusKey") }
     val metaPreview = item.metaPreview
     val isWatched = metaPreview?.let { isCatalogItemWatched(it) } ?: false
     val enrichedMeta by remember {

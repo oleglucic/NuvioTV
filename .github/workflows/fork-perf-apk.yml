@@ -2,7 +2,7 @@ name: Fork perf test APK (fork only)
 
 on:
   push:
-    branches: [ci/perf-base, ci/perf-test]
+    branches: [ci/perf-base, ci/perf-test, ci/perf-diag]
 
 permissions:
   contents: read
