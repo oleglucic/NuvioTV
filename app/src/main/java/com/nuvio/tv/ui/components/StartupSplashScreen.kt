@@ -12,6 +12,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -26,6 +28,8 @@ import coil3.request.crossfade
 import com.nuvio.tv.R
 import com.nuvio.tv.ui.theme.NuvioPrimitives
 import com.nuvio.tv.ui.theme.NuvioTheme
+import com.nuvio.tv.ui.util.drawDitheredRect
+import com.nuvio.tv.ui.util.ditheredPaint
 
 @Composable
 fun StartupSplashScreen(
@@ -74,25 +78,33 @@ fun StartupSplashScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
-                    .background(
-                        brush = Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0f to gradientTop,
-                                0.42f to gradientMid,
-                                1f to baseBg
-                            )
+                    .drawWithCache {
+                        val verticalPaint = ditheredPaint(
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0f to gradientTop,
+                                    0.42f to gradientMid,
+                                    1f to baseBg
+                                )
+                            ),
+                            size
                         )
-                    )
-                    .background(
-                        brush = Brush.horizontalGradient(
-                            colorStops = arrayOf(
-                                0f to halfFadeStrong,
-                                0.45f to halfFadeSoft,
-                                0.72f to Color.Transparent,
-                                1f to Color.Transparent
-                            )
+                        val horizontalPaint = ditheredPaint(
+                            Brush.horizontalGradient(
+                                colorStops = arrayOf(
+                                    0f to halfFadeStrong,
+                                    0.45f to halfFadeSoft,
+                                    0.72f to Color.Transparent,
+                                    1f to Color.Transparent
+                                )
+                            ),
+                            size
                         )
-                    )
+                        onDrawBehind {
+                            drawDitheredRect(verticalPaint, Offset.Zero, size)
+                            drawDitheredRect(horizontalPaint, Offset.Zero, size)
+                        }
+                    }
             )
         }
 
