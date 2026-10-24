@@ -354,8 +354,9 @@ private fun ModernCatalogRowItem(
             isCardFocused &&
             trailerPlaybackTarget == FocusedPosterTrailerPlaybackTarget.EXPANDED_CARD &&
             effectiveBackdropExpanded
-    val trailerUrl = expandedTrailerPreviewUrl()
-    val trailerPreviewUrl = if (playTrailerInExpandedCard) trailerUrl else null
+    // Read only by the card that can play it: the URL follows the focused item, so reading it in
+    // every card recomposed all visible cards on each D-pad move.
+    val trailerPreviewUrl = if (playTrailerInExpandedCard) expandedTrailerPreviewUrl() else null
     val trailerPreviewAudioUrl = if (playTrailerInExpandedCard) {
         expandedTrailerPreviewAudioUrl()
     } else {
