@@ -369,6 +369,8 @@ androidComponents {
     }
     // Only the full flavor ships the in-app updater.
     onVariants(selector().withFlavor("distribution" to "full")) { variant ->
+        // Fork-only debuggable test build: the ART profile is skipped, so there is no dex metadata to embed.
+        if (providers.gradleProperty("debuggable").orNull == "true") return@onVariants
         val variantName = variant.name.replaceFirstChar { it.uppercase() }
         val embedTask = tasks.register<EmbedUpdateDexMetadataTask>("embed${variantName}UpdateDexMetadata") {
             dexMetadataDirectory.from(provider {
