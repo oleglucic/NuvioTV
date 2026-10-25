@@ -24,6 +24,8 @@ fun resolveAppTheme(
     selectedTheme: AppTheme?,
     entitlements: CosmeticEntitlements
 ): AppTheme {
+    // FORK-ONLY screenshot build: always the Graphite supporter theme.
+    if (true) return AppTheme.GRAPHITE
     if (selectedTheme == null) {
         return supporterThemes
             .filterValues(entitlements::includes)
