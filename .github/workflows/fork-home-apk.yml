@@ -1,0 +1,74 @@
+name: Fork home enrichment test APK (fork only)
+
+on:
+  push:
+    branches: [ci/home-enrichment]
+
+permissions:
+  contents: read
+
+jobs:
+  full-debug-build:
+    name: Unit tests + fullDebug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Prepare local properties
+        env:
+          LOCAL_PROPERTIES_BASE64: ${{ secrets.LOCAL_PROPERTIES_BASE64 }}
+          LOCAL_DEV_PROPERTIES_BASE64: ${{ secrets.LOCAL_DEV_PROPERTIES_BASE64 }}
+        run: |
+          if [ -n "$LOCAL_PROPERTIES_BASE64" ]; then
+            printf '%s' "$LOCAL_PROPERTIES_BASE64" | base64 --decode > local.properties
+          else
+            touch local.properties
+          fi
+
+          if [ -n "$LOCAL_DEV_PROPERTIES_BASE64" ]; then
+            printf '%s' "$LOCAL_DEV_PROPERTIES_BASE64" | base64 --decode > local.dev.properties
+          else
+            touch local.dev.properties
+          fi
+
+      - name: Prepare stable fork test signing
+        env:
+          KS_B64: ${{ secrets.FORK_TEST_KEYSTORE_B64 }}
+          KS_PASSWORD: ${{ secrets.FORK_TEST_KEYSTORE_PASSWORD }}
+        run: |
+          printf '%s' "$KS_B64" | base64 --decode > "$RUNNER_TEMP/fork-test.jks"
+          {
+            echo "NUVIO_RELEASE_STORE_FILE=$RUNNER_TEMP/fork-test.jks"
+            echo "NUVIO_RELEASE_KEY_ALIAS=nuviotest"
+            echo "NUVIO_RELEASE_KEY_PASSWORD=$KS_PASSWORD"
+            echo "NUVIO_RELEASE_STORE_PASSWORD=$KS_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Test updater and build fullDebug APK
+        run: ./gradlew :app:assembleFullDebug --stacktrace
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: app/build/reports/tests/
+          if-no-files-found: ignore
+
+      - name: Upload fullDebug APK
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          path: app/build/outputs/apk/full/debug/app-full-universal-debug.apk
+          archive: false
+          if-no-files-found: error
+          retention-days: 7
