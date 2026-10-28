@@ -2,24 +2,19 @@ package com.nuvio.tv.ui.components
 
 import android.os.Build
 import android.view.KeyEvent as AndroidKeyEvent
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
@@ -49,7 +44,6 @@ import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.contentColorFor
 import androidx.tv.material3.surfaceColorAtElevation
-import kotlinx.coroutines.launch
 
 /**
  * Drop-in replacement for tv-material `Card` as the home rows configure it: one [shape] and
@@ -74,13 +68,10 @@ fun LightweightCard(
     focusedGlow: Glow = Glow.None,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val focused by interactionSource.collectIsFocusedAsState()
-    val pressed by interactionSource.collectIsPressedAsState()
-    val zIndex = animateFloatAsState(
-        targetValue = if (focused) FOCUSED_Z_INDEX else NON_FOCUSED_Z_INDEX,
-        label = "zIndex"
-    )
+    // Plain state set from this card's own focus and key handling. Collecting the interaction
+    // source and animating the z-index cost every card in a row two coroutines and an animation.
+    var focused by remember { mutableStateOf(false) }
+    var pressed by remember { mutableStateOf(false) }
     val border = if (focused || pressed) focusedBorder else Border.None
     val glow = if (focused && !pressed) focusedGlow else Glow.None
     val glowColor = if (glow.elevationColor == MaterialTheme.colorScheme.surface) {
@@ -89,36 +80,29 @@ fun LightweightCard(
         glow.elevationColor
     }
     val glowBlurRadiusPx = with(LocalDensity.current) { glow.elevation.toPx() }
-    val coroutineScope = rememberCoroutineScope()
-    val pressInteraction = remember { PressInteraction.Press(Offset.Zero) }
 
     CompositionLocalProvider(LocalContentColor provides contentColorFor(containerColor)) {
         Box(
             modifier = modifier
                 .onFocusChanged {
-                    if (!it.isFocused && pressed) {
-                        coroutineScope.launch {
-                            interactionSource.emit(PressInteraction.Release(pressInteraction))
-                        }
-                    }
+                    focused = it.isFocused
+                    if (!it.isFocused) pressed = false
                 }
                 .onKeyEvent { keyEvent ->
                     val native = keyEvent.nativeKeyEvent
                     if (native.keyCode !in SELECT_KEY_CODES) return@onKeyEvent false
                     when (native.action) {
                         AndroidKeyEvent.ACTION_DOWN -> if (native.repeatCount == 0) {
-                            coroutineScope.launch { interactionSource.emit(pressInteraction) }
+                            pressed = true
                         }
                         AndroidKeyEvent.ACTION_UP -> {
-                            coroutineScope.launch {
-                                interactionSource.emit(PressInteraction.Release(pressInteraction))
-                            }
+                            pressed = false
                             onClick()
                         }
                     }
                     true
                 }
-                .focusable(interactionSource = interactionSource)
+                .focusable()
                 .semantics(mergeDescendants = true) {
                     onClick {
                         onClick()
@@ -137,7 +121,7 @@ fun LightweightCard(
                 .layout { measurable, constraints ->
                     val placeable = measurable.measure(constraints)
                     layout(placeable.width, placeable.height) {
-                        placeable.place(0, 0, zIndex = zIndex.value)
+                        placeable.place(0, 0, zIndex = if (focused) FOCUSED_Z_INDEX else NON_FOCUSED_Z_INDEX)
                     }
                 }
                 .then(if (border != Border.None) CardBorderElement(shape, border) else Modifier)

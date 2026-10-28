@@ -183,21 +183,27 @@ private fun ModernContinueWatchingRowItem(
     var isCardFocused by remember { mutableStateOf(false) }
     val latestOnFocused by rememberUpdatedState(onFocused)
 
-    LaunchedEffect(focusEventId, isCardFocused) {
-        if (focusEventId == 0 || !isCardFocused) return@LaunchedEffect
+    // Composed only while this card is focused / the focus target, so the other cards in a row
+    // don't each start an effect that returns at once.
+    if (isCardFocused) {
+        LaunchedEffect(focusEventId) {
+            if (focusEventId == 0 || !isCardFocused) return@LaunchedEffect
         
-        // Update global focus state immediately so "self-claiming" logic in other items
-        // knows this item is now the one in charge.
-        latestOnFocused()
+            // Update global focus state immediately so "self-claiming" logic in other items
+            // knows this item is now the one in charge.
+            latestOnFocused()
 
-        val targetEventId = focusEventId
-        delay(MODERN_HORIZONTAL_FOCUS_DEBOUNCE_MS)
-        if (!isCardFocused || focusEventId != targetEventId) return@LaunchedEffect
+            val targetEventId = focusEventId
+            delay(MODERN_HORIZONTAL_FOCUS_DEBOUNCE_MS)
+            if (!isCardFocused || focusEventId != targetEventId) return@LaunchedEffect
+        }
     }
 
-    LaunchedEffect(isTargetItem) {
-        if (isTargetItem && !isCardFocused) {
-            runCatching { requester.requestFocus() }
+    if (isTargetItem) {
+        LaunchedEffect(Unit) {
+            if (isTargetItem && !isCardFocused) {
+                runCatching { requester.requestFocus() }
+            }
         }
     }
 
@@ -288,27 +294,39 @@ private fun ModernCatalogRowItem(
     //    }
     //}
 
-    LaunchedEffect(focusEventId, isCardFocused, focusKey) {
-        if (focusEventId == 0 || !isCardFocused) {
-            return@LaunchedEffect
-        }
+    // Composed only while this card is focused / the focus target, so the other cards in a row
+    // don't each start an effect that returns at once.
+    if (isCardFocused) {
+        LaunchedEffect(focusEventId, focusKey) {
+            if (focusEventId == 0 || !isCardFocused) {
+                return@LaunchedEffect
+            }
 
-        // Update global focus state immediately so "self-claiming" logic in other items
-        // knows this item is now the one in charge.
-        latestOnFocused()
+            // Update global focus state immediately so "self-claiming" logic in other items
+            // knows this item is now the one in charge.
+            latestOnFocused()
 
-        val targetEventId = focusEventId
-        delay(MODERN_HORIZONTAL_FOCUS_DEBOUNCE_MS)
-        if (!isCardFocused || focusEventId != targetEventId) {
-            return@LaunchedEffect
-        }
+            val targetEventId = focusEventId
+            delay(MODERN_HORIZONTAL_FOCUS_DEBOUNCE_MS)
+            if (!isCardFocused || focusEventId != targetEventId) {
+                return@LaunchedEffect
+            }
 
-        // Heavy "settled" work (trailers, enrichment) remains debounced.
-        item.metaPreview?.let { latestOnItemFocus(it) }
-        latestOnPreloadAdjacentItem()
-        when (payload) {
-            is ModernPayload.Catalog -> {
-                if (!payload.itemId.startsWith("__placeholder_")) {
+            // Heavy "settled" work (trailers, enrichment) remains debounced.
+            item.metaPreview?.let { latestOnItemFocus(it) }
+            latestOnPreloadAdjacentItem()
+            when (payload) {
+                is ModernPayload.Catalog -> {
+                    if (!payload.itemId.startsWith("__placeholder_")) {
+                        latestOnCatalogSelectionFocused(
+                            FocusedCatalogSelection(
+                                focusKey = focusKey,
+                                payload = payload
+                            )
+                        )
+                    }
+                }
+                is ModernPayload.CollectionFolder -> {
                     latestOnCatalogSelectionFocused(
                         FocusedCatalogSelection(
                             focusKey = focusKey,
@@ -316,22 +334,16 @@ private fun ModernCatalogRowItem(
                         )
                     )
                 }
+                is ModernPayload.ContinueWatching -> Unit
             }
-            is ModernPayload.CollectionFolder -> {
-                latestOnCatalogSelectionFocused(
-                    FocusedCatalogSelection(
-                        focusKey = focusKey,
-                        payload = payload
-                    )
-                )
-            }
-            is ModernPayload.ContinueWatching -> Unit
         }
     }
 
-    LaunchedEffect(isTargetItem) {
-        if (isTargetItem && !isCardFocused) {
-            runCatching { requester.requestFocus() }
+    if (isTargetItem) {
+        LaunchedEffect(Unit) {
+            if (isTargetItem && !isCardFocused) {
+                runCatching { requester.requestFocus() }
+            }
         }
     }
 
