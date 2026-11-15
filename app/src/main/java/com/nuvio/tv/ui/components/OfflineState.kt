@@ -4,7 +4,12 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -433,12 +438,19 @@ fun OfflineBanner(
     }
 }
 
+/**
+ * One pill that morphs between states instead of swapping: the accent colour fades from red
+ * to green, the width eases to the new text, and the icon and label crossfade with a short
+ * vertical slide.
+ */
 @Composable
 private fun BannerPill(isOffline: Boolean) {
-    val accent = if (isOffline) NuvioTheme.colors.Error else NuvioTheme.colors.Success
+    val duration = NuvioTheme.motion.durations.medium
+    val targetAccent = if (isOffline) NuvioTheme.colors.Error else NuvioTheme.colors.Success
+    val accent by animateColorAsState(targetAccent, tween(duration), label = "bannerAccent")
     val pill = RoundedCornerShape(NuvioTheme.radii.full)
     val surface = NuvioTheme.colors.Menu
-    Row(
+    Box(
         modifier = Modifier
             .padding(top = 20.dp)
             .shadow(elevation = 18.dp, shape = pill, ambientColor = Color.Black, spotColor = Color.Black)
@@ -449,9 +461,27 @@ private fun BannerPill(isOffline: Boolean) {
                 pill
             )
             .border(1.dp, Color.White.copy(alpha = 0.08f), pill)
-            .padding(start = 8.dp, end = 20.dp, top = 8.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .animateContentSize(tween(duration))
+            .padding(start = 8.dp, end = 20.dp, top = 8.dp, bottom = 8.dp)
     ) {
+        AnimatedContent(
+            targetState = isOffline,
+            transitionSpec = {
+                (fadeIn(tween(duration, delayMillis = duration / 3)) +
+                    slideInVertically(tween(duration)) { it / 2 }) togetherWith
+                    (fadeOut(tween(duration / 2)) + slideOutVertically(tween(duration / 2)) { -it / 2 }) using
+                    SizeTransform(clip = false)
+            },
+            label = "bannerContent"
+        ) { offline ->
+            BannerPillContent(isOffline = offline, accent = accent)
+        }
+    }
+}
+
+@Composable
+private fun BannerPillContent(isOffline: Boolean, accent: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
                 .size(30.dp)
