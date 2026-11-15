@@ -241,14 +241,14 @@ private fun OfflinePage(backOnline: Boolean) {
             },
             label = "offlinePageContent"
         ) { online ->
-            if (online) BackOnlineContent() else OfflineContent(amoled = amoled)
+            if (online) BackOnlineContent() else OfflineContent(blackSurfaces = pureBlackSurfaces())
         }
     }
 }
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
-private fun OfflineContent(amoled: Boolean) {
+private fun OfflineContent(blackSurfaces: Boolean) {
     val context = LocalContext.current
     val settingsFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { settingsFocus.requestFocus() } }
@@ -295,7 +295,7 @@ private fun OfflineContent(amoled: Boolean) {
             )
         }
 
-        OfflineTipsPanel(amoled = amoled, modifier = Modifier.width(380.dp))
+        OfflineTipsPanel(blackSurfaces = blackSurfaces, modifier = Modifier.width(380.dp))
     }
 }
 
@@ -323,9 +323,16 @@ private fun pageTitleStyle() = MaterialTheme.typography.displayLarge.copy(
     fontWeight = FontWeight.SemiBold
 )
 
-/** AMOLED mode makes the background pure black; offline surfaces follow it. */
+/**
+ * AMOLED Mode: only the app background is pure black. Detected from the resolved theme
+ * colour so it always matches what the rest of the app draws.
+ */
 @Composable
 private fun isAmoled(): Boolean = NuvioTheme.colors.Background == Color.Black
+
+/** "Pure Black Surfaces" (on top of AMOLED): cards, panels and menus are pure black too. */
+@Composable
+private fun pureBlackSurfaces(): Boolean = NuvioTheme.colors.Panel == Color.Black
 
 /** "You're offline" with the highlight word in the error colour, found in any translation. */
 @Composable
@@ -353,7 +360,8 @@ private fun highlighted(text: String, word: String, color: Color): AnnotatedStri
 
 /**
  * The sign-in screen's diagonal, tinted with [tint] (theme accent offline, green when back
- * online) plus a soft [glow]. Pure black in AMOLED mode.
+ * online) plus a soft [glow], settling into the theme's own background shade. In AMOLED Mode
+ * the background is pure black, like every other screen.
  */
 private fun Modifier.offlineGradientBackground(
     tint: Color,
@@ -371,7 +379,7 @@ private fun Modifier.offlineGradientBackground(
                 0f to top,
                 0.30f to mid,
                 0.62f to base,
-                1f to Color.Black
+                1f to base
             ),
             start = Offset(0f, 0f),
             end = Offset(size.width, size.height)
@@ -388,11 +396,11 @@ private fun Modifier.offlineGradientBackground(
     }
 
 @Composable
-private fun OfflineTipsPanel(amoled: Boolean, modifier: Modifier = Modifier) {
+private fun OfflineTipsPanel(blackSurfaces: Boolean, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(28.dp)
     Column(
         modifier = modifier
-            .background(if (amoled) Color.Black else GlassPane, shape)
+            .background(if (blackSurfaces) Color.Black else GlassPane, shape)
             .border(1.dp, GlassBorder, shape)
             .padding(horizontal = 28.dp, vertical = 28.dp),
         verticalArrangement = Arrangement.spacedBy(22.dp)
@@ -537,7 +545,8 @@ private fun BannerPill(isOffline: Boolean) {
     val targetAccent = if (isOffline) NuvioTheme.colors.Error else NuvioTheme.colors.Success
     val accent by animateColorAsState(targetAccent, tween(duration), label = "bannerAccent")
     val pill = RoundedCornerShape(NuvioTheme.radii.full)
-    val surface = if (isAmoled()) Color.Black else NuvioTheme.colors.Menu
+    // Menu is already pure black with Pure Black Surfaces and keeps its shade otherwise.
+    val surface = NuvioTheme.colors.Menu
     Box(
         modifier = Modifier
             .padding(top = 20.dp)
