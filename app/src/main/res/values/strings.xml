@@ -603,6 +603,7 @@
     <string name="offline_network_settings">Network settings</string>
     <string name="offline_banner_reconnecting">Reconnecting…</string>
     <string name="offline_back_online">Back online</string>
+    <string name="offline_back_online_highlight">online</string>
     <string name="player_waiting_for_connection">Waiting for internet connection…</string>
     <string name="advanced_section_performance">Performance &amp; navigation</string>
     <string name="advanced_section_diagnostics">Diagnostics</string>
