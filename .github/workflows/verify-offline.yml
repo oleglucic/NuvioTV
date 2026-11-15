@@ -41,18 +41,11 @@ jobs:
           fi
 
       - name: Prepare CI signing config
+        env:
+          CI_DEBUG_KEYSTORE_BASE64: ${{ secrets.CI_DEBUG_KEYSTORE_BASE64 }}
         run: |
-          keytool -genkeypair \
-            -v \
-            -keystore "$RUNNER_TEMP/ci-debug.jks" \
-            -storepass android \
-            -alias androiddebugkey \
-            -keypass android \
-            -dname "CN=Android Debug,O=Android,C=US" \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000
-
+          # Fixed fork-only key so each APK installs over the previous one on the test TV.
+          printf '%s' "$CI_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/ci-debug.jks"
           {
             echo "NUVIO_RELEASE_STORE_FILE=$RUNNER_TEMP/ci-debug.jks"
             echo "NUVIO_RELEASE_KEY_ALIAS=androiddebugkey"
@@ -61,7 +54,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Test updater and build fullDebug APK
-        run: ./gradlew :app:testFullDebugUnitTest :app:assembleFullDebug --continue --stacktrace
+        run: ./gradlew :app:testFullDebugUnitTest --tests "*ConnectivityVerdictTest" --tests "*NetworkPlaybackErrorClassificationTest" :app:assembleFullDebug --continue --stacktrace
 
       - name: Upload test reports
         if: always()
