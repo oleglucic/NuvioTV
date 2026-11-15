@@ -1491,6 +1491,15 @@ internal fun PlayerRuntimeController.initializePlayer(
 
                     override fun onPlayerError(error: PlaybackException) {
                         if (isReleasingPlayer && error.errorCode == PlaybackException.ERROR_CODE_TIMEOUT) return
+                        // Lost internet is not a broken stream: wait for the connection instead of
+                        // spending retries or switching source. Online failures come back through here.
+                        if (connectivityCheckedError !== error &&
+                            handleNetworkErrorConnectivity(error) { onPlayerError(error) }
+                        ) {
+                            cancelFirstFrameWatchdog()
+                            cancelStableProgressReset()
+                            return
+                        }
                         cancelFirstFrameWatchdog()
                         val detailedError = error.toDisplayMessage(context)
                         cancelStableProgressReset()

@@ -113,7 +113,8 @@ class PlayerRuntimeController(
     internal val party: com.nuvio.tv.core.party.PartyRepository,
     internal val profileId: Int,
     internal val savedStateHandle: SavedStateHandle,
-    internal val scope: CoroutineScope
+    internal val scope: CoroutineScope,
+    internal val connectivityMonitor: com.nuvio.tv.core.network.ConnectivityMonitor? = null
 ) {
 
     /** Resolved once so every `context.getString(...)` here follows the app language. */
@@ -712,6 +713,9 @@ class PlayerRuntimeController(
     internal var errorRetryCount: Int = 0
     internal var consecutiveAutoPlayCount: Int = 0
     internal var errorRetryJob: Job? = null
+
+    /** The error last confirmed to have happened while online, so it skips the connectivity gate. */
+    internal var connectivityCheckedError: androidx.media3.common.PlaybackException? = null
     internal var stableProgressResetJob: Job? = null
     @Volatile internal var currentPlayerSettingsForReport: PlayerSettings = PlayerSettings()
     @Volatile internal var hasObservedPlayerSettings: Boolean = false

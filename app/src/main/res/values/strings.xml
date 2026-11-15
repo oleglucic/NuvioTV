@@ -589,6 +589,12 @@
     <string name="network_connection_wifi">Wi-Fi</string>
     <string name="network_connection_ethernet">Ethernet</string>
     <string name="network_connection_offline">Offline</string>
+    <string name="offline_title">No internet connection</string>
+    <string name="offline_subtitle">Check that your TV is connected to the internet. Nuvio will reload as soon as you\'re back online.</string>
+    <string name="offline_network_settings">Network settings</string>
+    <string name="offline_banner_reconnecting">Reconnecting…</string>
+    <string name="offline_back_online">Back online</string>
+    <string name="player_waiting_for_connection">Waiting for internet connection…</string>
     <string name="advanced_section_performance">Performance &amp; navigation</string>
     <string name="advanced_section_diagnostics">Diagnostics</string>
     <string name="advanced_sentry_reports">Sentry crash reports</string>

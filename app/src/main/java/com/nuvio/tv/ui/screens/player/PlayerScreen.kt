@@ -1352,7 +1352,9 @@ fun PlayerScreen(
             backdropUrl = uiState.backdrop,
             logoUrl = uiState.logo,
             title = uiState.title,
-            message = if (uiState.isEpisodeAutoPlaySearching) {
+            message = if (uiState.waitingForConnection) {
+                stringResource(R.string.player_waiting_for_connection)
+            } else if (uiState.isEpisodeAutoPlaySearching) {
                 stringResource(R.string.stream_finding_source).takeIf { uiState.showPlayerLoadingStatus }
             } else {
                 uiState.loadingMessage.takeIf { uiState.showPlayerLoadingStatus || uiState.isTorrentStream }

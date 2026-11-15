@@ -46,6 +46,9 @@ import com.nuvio.tv.domain.model.LibrarySourceMode
 import com.nuvio.tv.domain.model.MetaPreview
 import com.nuvio.tv.domain.model.isSeriesLikeType
 import com.nuvio.tv.ui.components.ErrorState
+import com.nuvio.tv.ui.components.OfflineState
+import com.nuvio.tv.ui.components.ReloadOnReconnect
+import com.nuvio.tv.ui.components.rememberDeviceOffline
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.components.LocalStartupLoadingState
 import com.nuvio.tv.ui.components.LocalStartupSplashEnabled
@@ -239,8 +242,14 @@ fun HomeScreen(
         (uiState.continueWatchingEnabled && uiState.continueWatchingItems.isNotEmpty()) ||
         uiState.heroItems.isNotEmpty() ||
         hasCollectionContent
+    val deviceOffline by rememberDeviceOffline()
+    val showOfflineState = deviceOffline && !hasAnyContent
+    ReloadOnReconnect {
+        if (!hasAnyContent || uiState.error != null) viewModel.onEvent(HomeEvent.OnRetry)
+    }
     val showStartupLoader = when {
         !uiState.layoutPreferencesReady -> true
+        showOfflineState -> false
         uiState.isLoading && !hasAnyContent -> true
         uiState.error == noAddonsError && uiState.catalogRows.isEmpty() -> !homeStableGateReleased
         uiState.error == noCatalogAddonsError && uiState.catalogRows.isEmpty() && !hasCollectionContent && !hasHeroContent -> !homeStableGateReleased
@@ -270,6 +279,10 @@ fun HomeScreen(
         when {
             !uiState.layoutPreferencesReady -> {
                 Unit
+            }
+
+            showOfflineState -> {
+                OfflineState(onRetry = { viewModel.onEvent(HomeEvent.OnRetry) })
             }
 
             uiState.isLoading && !hasAnyContent -> {

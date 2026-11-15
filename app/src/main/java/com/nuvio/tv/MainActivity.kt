@@ -335,6 +335,9 @@ open class MainActivity : ComponentActivity() {
     @Inject
     lateinit var partyRepository: PartyRepository
 
+    @Inject
+    lateinit var connectivityMonitor: com.nuvio.tv.core.network.ConnectivityMonitor
+
     private val pendingDeepLinkUrl = MutableStateFlow<String?>(null)
     private val pendingLaunchIntent = MutableStateFlow<Intent?>(null)
 
@@ -726,7 +729,8 @@ open class MainActivity : ComponentActivity() {
                     com.nuvio.tv.core.player.LocalTrailerPlayerPool provides trailerPlayerPool,
                     LocalSplashBackground provides splashBackground,
                     LocalStartupLoadingState provides startupLoadingState,
-                    LocalStartupSplashEnabled provides startupSplashEnabled
+                    LocalStartupSplashEnabled provides startupSplashEnabled,
+                    com.nuvio.tv.ui.components.LocalConnectivityMonitor provides connectivityMonitor
                 ) {
                 val transparentPlayerBackdrop = PlayerWindowBackdrop.isTransparentRequested
                 Surface(
@@ -1283,6 +1287,11 @@ open class MainActivity : ComponentActivity() {
                                     autoNextOverlay == null &&
                                     !isTrailerPlaying,
                                 onShown = { trailerPlayerPool.stop() }
+                            )
+
+                            // The player shows its own "waiting for connection" overlay instead.
+                            com.nuvio.tv.ui.components.OfflineBanner(
+                                suppressed = currentRoute?.startsWith("player/") == true
                             )
                         }
                     }

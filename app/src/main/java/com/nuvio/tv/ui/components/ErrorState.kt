@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text as CoreText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -34,6 +35,12 @@ fun ErrorState(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    ReloadOnReconnect(onRetry)
+    val offline by rememberDeviceOffline()
+    if (offline) {
+        OfflineState(onRetry = onRetry, modifier = modifier)
+        return
+    }
     val displayMessage = buildErrorStatePresentation(
         message = message,
         strings = rememberErrorStateStrings()
