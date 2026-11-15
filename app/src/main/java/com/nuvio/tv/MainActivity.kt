@@ -1290,9 +1290,9 @@ open class MainActivity : ComponentActivity() {
                             )
 
                             // The player shows its own "waiting for connection" overlay instead.
-                            com.nuvio.tv.ui.components.OfflineBanner(
-                                suppressed = currentRoute?.startsWith("player/") == true
-                            )
+                            val onPlayerRoute = currentRoute?.startsWith("player/") == true
+                            com.nuvio.tv.ui.components.OfflineFullscreenHost(suppressed = onPlayerRoute)
+                            com.nuvio.tv.ui.components.OfflineBanner(suppressed = onPlayerRoute)
                         }
                     }
                 } 

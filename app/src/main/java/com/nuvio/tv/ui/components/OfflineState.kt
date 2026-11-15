@@ -9,6 +9,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -62,6 +64,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -92,11 +95,13 @@ import kotlinx.coroutines.delay
 /** The app's connectivity monitor; null in previews and tests, which then count as online. */
 val LocalConnectivityMonitor = staticCompositionLocalOf<ConnectivityMonitor?> { null }
 
-/**
- * How many full-screen [OfflineState]s are on screen. The banner hides while any is, so the
- * user is not told twice; it still shows "Back online" when they close on reconnect.
- */
-private val visibleOfflineStates = mutableIntStateOf(0)
+private enum class OfflinePagePhase { Hidden, Offline, BackOnline }
+
+/** How many screens currently want the full-screen offline page (see [OfflineState]). */
+private val offlinePageRequests = mutableIntStateOf(0)
+
+/** What [OfflineFullscreenHost] is showing; the banner stays out of the way while it shows. */
+private val offlinePagePhase = mutableStateOf(OfflinePagePhase.Hidden)
 
 /** Whether the TV currently has no internet (debounced). */
 @Composable
@@ -145,37 +150,113 @@ private val GlassButton = Color.White.copy(alpha = 0.06f)
 private val GlassButtonBorder = Color.White.copy(alpha = 0.10f)
 
 /**
- * Full-screen state for a screen that has nothing to show because the TV is offline: a
- * themed diagonal gradient (pure black in AMOLED mode), the theme wordmark, the message and
- * Network settings on the left, and things to try on a glass panel on the right. There is
- * no Retry: pair it with [ReloadOnReconnect] placed outside the offline branch, which
- * reloads the screen when the TV reconnects and this leaves composition.
+ * Placed by a screen that has nothing to show because the TV is offline. It only asks for the
+ * page: [OfflineFullscreenHost] at the app root draws it, so the page can stay up through the
+ * reconnect while the screen behind it reloads (pair this with [ReloadOnReconnect]).
  */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun OfflineState(
     modifier: Modifier = Modifier,
 ) {
+    DisposableEffect(Unit) {
+        offlinePageRequests.intValue++
+        onDispose { offlinePageRequests.intValue-- }
+    }
+    Box(modifier = modifier.fillMaxSize())
+}
+
+/**
+ * App-root host for the full-screen offline page. Offline: theme gradient, wordmark, message,
+ * Network settings and things to try. On reconnect the same page morphs to a green gradient
+ * with the wordmark and "Back online" centred, holds briefly while the screen behind reloads,
+ * then the whole page fades out.
+ */
+@Composable
+fun OfflineFullscreenHost(
+    suppressed: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val offline by rememberDeviceOffline()
+    val requested = offlinePageRequests.intValue > 0
+    var phase by offlinePagePhase
+    LaunchedEffect(offline, requested) {
+        when {
+            offline && requested -> phase = OfflinePagePhase.Offline
+            !offline && phase == OfflinePagePhase.Offline -> phase = OfflinePagePhase.BackOnline
+            // Navigated away while still offline: nothing to celebrate, just close.
+            offline && !requested && phase == OfflinePagePhase.Offline -> phase = OfflinePagePhase.Hidden
+        }
+    }
+    // Separate effect so the reloading screen dropping its request cannot cancel the hold.
+    LaunchedEffect(phase) {
+        if (phase == OfflinePagePhase.BackOnline) {
+            delay(BACK_ONLINE_PAGE_HOLD_MS)
+            phase = OfflinePagePhase.Hidden
+        }
+    }
+    // Keep the last visible phase so the fade-out still shows "Back online".
+    var shown by remember { mutableStateOf(OfflinePagePhase.Offline) }
+    if (phase != OfflinePagePhase.Hidden) shown = phase
+
+    AnimatedVisibility(
+        visible = phase != OfflinePagePhase.Hidden && !suppressed,
+        enter = fadeIn(tween(NuvioTheme.motion.durations.medium)),
+        exit = fadeOut(tween(PAGE_FADE_OUT_MS)),
+        modifier = modifier
+    ) {
+        OfflinePage(backOnline = shown == OfflinePagePhase.BackOnline)
+    }
+}
+
+@Composable
+private fun OfflinePage(backOnline: Boolean) {
+    val amoled = isAmoled()
+    val morph = tween<Color>(MORPH_MS)
+    val tint by animateColorAsState(
+        if (backOnline) NuvioTheme.colors.Success else NuvioTheme.palette.secondary, morph, label = "offlineTint"
+    )
+    val glow by animateColorAsState(
+        if (backOnline) NuvioTheme.colors.Success else NuvioTheme.colors.Error, morph, label = "offlineGlow"
+    )
+    val glowX by animateFloatAsState(if (backOnline) 0.5f else 0.16f, tween(MORPH_MS), label = "offlineGlowX")
+    val glowStrength by animateFloatAsState(if (backOnline) 0.22f else 0.10f, tween(MORPH_MS), label = "offlineGlowA")
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .offlineGradientBackground(
+                tint = tint,
+                base = NuvioTheme.colors.Background,
+                glow = glow.copy(alpha = glowStrength),
+                glowCenterX = glowX,
+                amoled = amoled
+            )
+    ) {
+        AnimatedContent(
+            targetState = backOnline,
+            transitionSpec = {
+                (fadeIn(tween(MORPH_MS, delayMillis = MORPH_MS / 4)) +
+                    scaleIn(tween(MORPH_MS, delayMillis = MORPH_MS / 4), initialScale = 0.94f)) togetherWith
+                    fadeOut(tween(MORPH_MS / 2))
+            },
+            label = "offlinePageContent"
+        ) { online ->
+            if (online) BackOnlineContent() else OfflineContent(amoled = amoled)
+        }
+    }
+}
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+private fun OfflineContent(amoled: Boolean) {
     val context = LocalContext.current
     val settingsFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { settingsFocus.requestFocus() } }
-    DisposableEffect(Unit) {
-        visibleOfflineStates.intValue++
-        onDispose { visibleOfflineStates.intValue-- }
-    }
-
-    val amoled = isAmoled()
     val error = NuvioTheme.colors.Error
 
     Row(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
-            .offlineGradientBackground(
-                accent = NuvioTheme.palette.secondary,
-                base = NuvioTheme.colors.Background,
-                warning = error,
-                amoled = amoled
-            )
             .padding(horizontal = 96.dp, vertical = 64.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(72.dp)
@@ -186,11 +267,7 @@ fun OfflineState(
             Spacer(modifier = Modifier.height(40.dp))
             Text(
                 text = offlineTitle(highlight = error),
-                style = MaterialTheme.typography.displayLarge.copy(
-                    fontSize = 44.sp,
-                    lineHeight = 50.sp,
-                    fontWeight = FontWeight.SemiBold
-                ),
+                style = pageTitleStyle(),
                 color = NuvioTheme.colors.TextPrimary
             )
             Spacer(modifier = Modifier.height(14.dp))
@@ -202,11 +279,19 @@ fun OfflineState(
             )
             Spacer(modifier = Modifier.height(40.dp))
             // No Retry: the page reloads on its own the moment the connection is back.
+            // The only focusable thing here, so keep focus from wandering to the screen behind.
             OfflineActionButton(
                 label = stringResource(R.string.offline_network_settings),
                 icon = Icons.Default.Settings,
                 onClick = { openNetworkSettings(context) },
-                modifier = Modifier.focusRequester(settingsFocus)
+                modifier = Modifier
+                    .focusRequester(settingsFocus)
+                    .focusProperties {
+                        left = FocusRequester.Cancel
+                        right = FocusRequester.Cancel
+                        up = FocusRequester.Cancel
+                        down = FocusRequester.Cancel
+                    }
             )
         }
 
@@ -214,38 +299,73 @@ fun OfflineState(
     }
 }
 
+@Composable
+private fun BackOnlineContent() {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        BrandWordmark(modifier = Modifier.height(40.dp))
+        Spacer(modifier = Modifier.height(32.dp))
+        Text(
+            text = backOnlineTitle(highlight = NuvioTheme.colors.Success),
+            style = pageTitleStyle(),
+            color = NuvioTheme.colors.TextPrimary
+        )
+    }
+}
+
+@Composable
+private fun pageTitleStyle() = MaterialTheme.typography.displayLarge.copy(
+    fontSize = 44.sp,
+    lineHeight = 50.sp,
+    fontWeight = FontWeight.SemiBold
+)
+
 /** AMOLED mode makes the background pure black; offline surfaces follow it. */
 @Composable
 private fun isAmoled(): Boolean = NuvioTheme.colors.Background == Color.Black
 
 /** "You're offline" with the highlight word in the error colour, found in any translation. */
 @Composable
-private fun offlineTitle(highlight: Color): AnnotatedString {
-    val title = stringResource(R.string.offline_page_title)
-    val word = stringResource(R.string.offline_page_title_highlight)
-    val start = title.indexOf(word, ignoreCase = true)
+private fun offlineTitle(highlight: Color): AnnotatedString = highlighted(
+    stringResource(R.string.offline_page_title),
+    stringResource(R.string.offline_page_title_highlight),
+    highlight
+)
+
+/** "Back online" with "online" in the success colour, mirroring the offline title. */
+@Composable
+private fun backOnlineTitle(highlight: Color): AnnotatedString = highlighted(
+    stringResource(R.string.offline_back_online),
+    stringResource(R.string.offline_back_online_highlight),
+    highlight
+)
+
+private fun highlighted(text: String, word: String, color: Color): AnnotatedString {
+    val start = if (word.isBlank()) -1 else text.indexOf(word, ignoreCase = true)
     return buildAnnotatedString {
-        append(title)
-        if (word.isNotBlank() && start >= 0) {
-            addStyle(SpanStyle(color = highlight), start, start + word.length)
-        }
+        append(text)
+        if (start >= 0) addStyle(SpanStyle(color = color), start, start + word.length)
     }
 }
 
 /**
- * The sign-in screen's 122° diagonal, tinted with the active theme's accent and a faint warm
- * glow behind the glyph so the page reads as "something is wrong" without shouting.
+ * The sign-in screen's diagonal, tinted with [tint] (theme accent offline, green when back
+ * online) plus a soft [glow]. Pure black in AMOLED mode.
  */
 private fun Modifier.offlineGradientBackground(
-    accent: Color,
+    tint: Color,
     base: Color,
-    warning: Color,
+    glow: Color,
+    glowCenterX: Float,
     amoled: Boolean,
 ): Modifier =
     drawWithCache {
         if (amoled) return@drawWithCache onDrawBehind { drawRect(Color.Black) }
-        val top = accent.copy(alpha = 0.20f).compositeOver(base)
-        val mid = accent.copy(alpha = 0.07f).compositeOver(base)
+        val top = tint.copy(alpha = 0.20f).compositeOver(base)
+        val mid = tint.copy(alpha = 0.07f).compositeOver(base)
         val diagonal = Brush.linearGradient(
             colorStops = arrayOf(
                 0f to top,
@@ -256,14 +376,14 @@ private fun Modifier.offlineGradientBackground(
             start = Offset(0f, 0f),
             end = Offset(size.width, size.height)
         )
-        val glow = Brush.radialGradient(
-            colors = listOf(warning.copy(alpha = 0.10f), Color.Transparent),
-            center = Offset(size.width * 0.16f, size.height * 0.42f),
-            radius = max(size.width, size.height) * 0.38f
+        val radial = Brush.radialGradient(
+            colors = listOf(glow, Color.Transparent),
+            center = Offset(size.width * glowCenterX, size.height * 0.45f),
+            radius = max(size.width, size.height) * 0.42f
         )
         onDrawBehind {
             drawRect(diagonal)
-            drawRect(glow)
+            drawRect(radial)
         }
     }
 
@@ -380,6 +500,9 @@ fun OfflineBanner(
     LaunchedEffect(offline) {
         if (offline) {
             state = BannerState.Offline
+        } else if (state == BannerState.Offline && offlinePagePhase.value != OfflinePagePhase.Hidden) {
+            // The full-screen page plays its own "Back online"; do not repeat it.
+            state = BannerState.Hidden
         } else if (state == BannerState.Offline) {
             state = BannerState.BackOnline
             delay(BACK_ONLINE_VISIBLE_MS)
@@ -394,7 +517,7 @@ fun OfflineBanner(
     Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
         AnimatedVisibility(
             visible = state != BannerState.Hidden && !suppressed &&
-                !(state == BannerState.Offline && visibleOfflineStates.intValue > 0),
+                offlinePagePhase.value == OfflinePagePhase.Hidden,
             enter = fadeIn(tween(duration)) + slideInVertically(tween(duration)) { -it },
             exit = fadeOut(tween(duration)) + slideOutVertically(tween(duration)) { -it }
         ) {
@@ -483,3 +606,6 @@ private fun BannerPillContent(isOffline: Boolean, accent: Color) {
 }
 
 private const val BACK_ONLINE_VISIBLE_MS = 2_500L
+private const val BACK_ONLINE_PAGE_HOLD_MS = 1_600L
+private const val MORPH_MS = 600
+private const val PAGE_FADE_OUT_MS = 700
