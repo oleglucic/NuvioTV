@@ -170,20 +170,18 @@ fun OfflineState(
         modifier = modifier
             .fillMaxSize()
             .offlineGradientBackground(accent = accent, base = background, warning = error)
-            .padding(horizontal = 72.dp, vertical = 48.dp),
+            .padding(horizontal = 96.dp, vertical = 64.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(56.dp)
+        horizontalArrangement = Arrangement.spacedBy(72.dp)
     ) {
-        Column(modifier = Modifier.weight(1.1f)) {
-            BrandWordmark(modifier = Modifier.height(30.dp), alpha = 0.9f)
-            Spacer(modifier = Modifier.height(36.dp))
-            OfflineGlyph(tint = error)
-            Spacer(modifier = Modifier.height(24.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            OfflineEyebrow(color = error)
+            Spacer(modifier = Modifier.height(18.dp))
             Text(
                 text = stringResource(R.string.offline_page_title),
                 style = MaterialTheme.typography.displayLarge.copy(
-                    fontSize = 40.sp,
-                    lineHeight = 46.sp,
+                    fontSize = 44.sp,
+                    lineHeight = 50.sp,
                     fontWeight = FontWeight.SemiBold
                 ),
                 color = NuvioTheme.colors.TextPrimary
@@ -193,9 +191,9 @@ fun OfflineState(
                 text = stringResource(R.string.offline_page_body),
                 style = MaterialTheme.typography.bodyLarge,
                 color = NuvioTheme.colors.TextSecondary,
-                modifier = Modifier.widthIn(max = 460.dp)
+                modifier = Modifier.widthIn(max = 420.dp)
             )
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(40.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)) {
                 OfflineActionButton(
                     label = stringResource(R.string.action_retry),
@@ -209,11 +207,9 @@ fun OfflineState(
                     onClick = { openNetworkSettings(context) }
                 )
             }
-            Spacer(modifier = Modifier.height(28.dp))
-            CheckingStatusLine()
         }
 
-        OfflineTipsPanel(modifier = Modifier.weight(0.9f))
+        OfflineTipsPanel(modifier = Modifier.width(380.dp))
     }
 }
 
@@ -246,29 +242,11 @@ private fun Modifier.offlineGradientBackground(accent: Color, base: Color, warni
         }
     }
 
+/** Pulsing dot and a quiet label above the title: says what is wrong and that it is live. */
 @Composable
-private fun OfflineGlyph(tint: Color) {
-    Box(
-        modifier = Modifier
-            .size(72.dp)
-            .background(tint.copy(alpha = 0.12f), CircleShape)
-            .border(1.dp, tint.copy(alpha = 0.30f), CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = Icons.Default.SignalWifiOff,
-            contentDescription = null,
-            tint = tint,
-            modifier = Modifier.size(34.dp)
-        )
-    }
-}
-
-/** "Checking for a connection…" with a softly pulsing dot, so the page never looks stuck. */
-@Composable
-private fun CheckingStatusLine() {
+private fun OfflineEyebrow(color: Color) {
     val pulse by rememberInfiniteTransition(label = "offlinePulse").animateFloat(
-        initialValue = 0.25f,
+        initialValue = 0.3f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse),
         label = "offlinePulseAlpha"
@@ -278,13 +256,13 @@ private fun CheckingStatusLine() {
             modifier = Modifier
                 .size(8.dp)
                 .alpha(pulse)
-                .background(NuvioTheme.colors.Warning, CircleShape)
+                .background(color, CircleShape)
         )
         Spacer(modifier = Modifier.width(10.dp))
         Text(
-            text = stringResource(R.string.offline_status_checking),
-            style = MaterialTheme.typography.bodyMedium,
-            color = NuvioTheme.colors.TextTertiary
+            text = stringResource(R.string.offline_title).uppercase(),
+            style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 1.4.sp),
+            color = color.copy(alpha = 0.9f)
         )
     }
 }
@@ -296,26 +274,24 @@ private fun OfflineTipsPanel(modifier: Modifier = Modifier) {
         modifier = modifier
             .background(GlassPane, shape)
             .border(1.dp, GlassBorder, shape)
-            .padding(horizontal = 32.dp, vertical = 30.dp)
+            .padding(horizontal = 28.dp, vertical = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp)
     ) {
         Text(
             text = stringResource(R.string.offline_tips_title),
             style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 1.2.sp),
             color = NuvioTheme.colors.TextTertiary
         )
-        Spacer(modifier = Modifier.height(22.dp))
         OfflineTip(
             icon = Icons.Default.Wifi,
             title = stringResource(R.string.offline_tip_connection_title),
             body = stringResource(R.string.offline_tip_connection_body)
         )
-        TipDivider()
         OfflineTip(
             icon = Icons.Default.Router,
             title = stringResource(R.string.offline_tip_router_title),
             body = stringResource(R.string.offline_tip_router_body)
         )
-        TipDivider()
         OfflineTip(
             icon = Icons.Default.Settings,
             title = stringResource(R.string.offline_tip_settings_title),
@@ -325,19 +301,8 @@ private fun OfflineTipsPanel(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun TipDivider() {
-    Box(
-        modifier = Modifier
-            .padding(vertical = 18.dp)
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(GlassBorder)
-    )
-}
-
-@Composable
 private fun OfflineTip(icon: ImageVector, title: String, body: String) {
-    Row(verticalAlignment = Alignment.Top) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
                 .size(40.dp)
@@ -359,7 +324,7 @@ private fun OfflineTip(icon: ImageVector, title: String, body: String) {
                 style = MaterialTheme.typography.titleSmall,
                 color = NuvioTheme.colors.TextPrimary
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = body,
                 style = MaterialTheme.typography.bodySmall,
