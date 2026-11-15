@@ -38,7 +38,7 @@ fun ErrorState(
     ReloadOnReconnect(onRetry)
     val offline by rememberDeviceOffline()
     if (offline) {
-        OfflineState(onRetry = onRetry, modifier = modifier)
+        OfflineState(modifier = modifier)
         return
     }
     val displayMessage = buildErrorStatePresentation(

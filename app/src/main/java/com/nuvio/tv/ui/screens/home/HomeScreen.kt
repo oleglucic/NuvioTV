@@ -282,7 +282,7 @@ fun HomeScreen(
             }
 
             showOfflineState -> {
-                OfflineState(onRetry = { viewModel.onEvent(HomeEvent.OnRetry) })
+                OfflineState()
             }
 
             uiState.isLoading && !hasAnyContent -> {
