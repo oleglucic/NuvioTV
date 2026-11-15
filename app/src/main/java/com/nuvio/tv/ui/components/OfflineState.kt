@@ -212,23 +212,28 @@ fun OfflineFullscreenHost(
 private fun OfflinePage(backOnline: Boolean) {
     val amoled = isAmoled()
     val morph = tween<Color>(MORPH_MS)
-    val tint by animateColorAsState(
-        if (backOnline) NuvioTheme.colors.Success else NuvioTheme.palette.secondary, morph, label = "offlineTint"
+    // One light that travels: from the top-left corner in the theme accent while offline, to
+    // the centre in green once back online. The warm warning glow fades out as it moves.
+    val lightColor by animateColorAsState(
+        if (backOnline) NuvioTheme.colors.Success.copy(alpha = 0.24f)
+        else NuvioTheme.palette.secondary.copy(alpha = 0.22f),
+        morph,
+        label = "offlineLightColor"
     )
-    val glow by animateColorAsState(
-        if (backOnline) NuvioTheme.colors.Success else NuvioTheme.colors.Error, morph, label = "offlineGlow"
-    )
-    val glowX by animateFloatAsState(if (backOnline) 0.5f else 0.16f, tween(MORPH_MS), label = "offlineGlowX")
-    val glowStrength by animateFloatAsState(if (backOnline) 0.22f else 0.10f, tween(MORPH_MS), label = "offlineGlowA")
+    val lightX by animateFloatAsState(if (backOnline) 0.5f else 0f, tween(MORPH_MS), label = "offlineLightX")
+    val lightY by animateFloatAsState(if (backOnline) 0.45f else 0f, tween(MORPH_MS), label = "offlineLightY")
+    val lightRadius by animateFloatAsState(if (backOnline) 0.6f else 1.05f, tween(MORPH_MS), label = "offlineLightR")
+    val warningAlpha by animateFloatAsState(if (backOnline) 0f else 0.10f, tween(MORPH_MS), label = "offlineWarnA")
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .offlineGradientBackground(
-                tint = tint,
                 base = NuvioTheme.colors.Background,
-                glow = glow.copy(alpha = glowStrength),
-                glowCenterX = glowX,
+                light = lightColor,
+                lightCenter = Offset(lightX, lightY),
+                lightRadius = lightRadius,
+                warning = NuvioTheme.colors.Error.copy(alpha = warningAlpha),
                 amoled = amoled
             )
     ) {
@@ -359,39 +364,39 @@ private fun highlighted(text: String, word: String, color: Color): AnnotatedStri
 }
 
 /**
- * The sign-in screen's diagonal, tinted with [tint] (theme accent offline, green when back
- * online) plus a soft [glow], settling into the theme's own background shade. In AMOLED Mode
- * the background is pure black, like every other screen.
+ * The theme background lit by a single soft [light] at [lightCenter] (fractions of the size),
+ * plus a faint [warning] glow on the left while offline. In AMOLED Mode the background is pure
+ * black, like every other screen.
  */
 private fun Modifier.offlineGradientBackground(
-    tint: Color,
     base: Color,
-    glow: Color,
-    glowCenterX: Float,
+    light: Color,
+    lightCenter: Offset,
+    lightRadius: Float,
+    warning: Color,
     amoled: Boolean,
 ): Modifier =
     drawWithCache {
         if (amoled) return@drawWithCache onDrawBehind { drawRect(Color.Black) }
-        val top = tint.copy(alpha = 0.20f).compositeOver(base)
-        val mid = tint.copy(alpha = 0.07f).compositeOver(base)
-        val diagonal = Brush.linearGradient(
+        val extent = max(size.width, size.height)
+        val lightBrush = Brush.radialGradient(
             colorStops = arrayOf(
-                0f to top,
-                0.30f to mid,
-                0.62f to base,
-                1f to base
+                0f to light,
+                0.45f to light.copy(alpha = light.alpha * 0.35f),
+                1f to Color.Transparent
             ),
-            start = Offset(0f, 0f),
-            end = Offset(size.width, size.height)
+            center = Offset(size.width * lightCenter.x, size.height * lightCenter.y),
+            radius = extent * lightRadius
         )
-        val radial = Brush.radialGradient(
-            colors = listOf(glow, Color.Transparent),
-            center = Offset(size.width * glowCenterX, size.height * 0.45f),
-            radius = max(size.width, size.height) * 0.42f
+        val warningBrush = Brush.radialGradient(
+            colors = listOf(warning, Color.Transparent),
+            center = Offset(size.width * 0.16f, size.height * 0.45f),
+            radius = extent * 0.42f
         )
         onDrawBehind {
-            drawRect(diagonal)
-            drawRect(radial)
+            drawRect(base)
+            drawRect(lightBrush)
+            if (warning.alpha > 0f) drawRect(warningBrush)
         }
     }
 
@@ -616,5 +621,5 @@ private fun BannerPillContent(isOffline: Boolean, accent: Color) {
 
 private const val BACK_ONLINE_VISIBLE_MS = 2_500L
 private const val BACK_ONLINE_PAGE_HOLD_MS = 1_600L
-private const val MORPH_MS = 600
+private const val MORPH_MS = 800
 private const val PAGE_FADE_OUT_MS = 700
