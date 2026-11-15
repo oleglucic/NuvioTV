@@ -5,11 +5,17 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -22,18 +28,24 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Router
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SignalWifiOff
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -41,12 +53,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.tv.material3.Border
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -56,6 +78,7 @@ import androidx.tv.material3.Text
 import com.nuvio.tv.R
 import com.nuvio.tv.core.network.ConnectivityMonitor
 import com.nuvio.tv.ui.theme.NuvioTheme
+import kotlin.math.max
 import kotlinx.coroutines.delay
 
 /** The app's connectivity monitor; null in previews and tests, which then count as online. */
@@ -107,10 +130,18 @@ internal fun openNetworkSettings(context: Context) {
     }
 }
 
+// Glass surfaces shared with the sign-in screen, so offline reads as part of the same app.
+private val GlassPane = Color.White.copy(alpha = 0.03f)
+private val GlassBorder = Color.White.copy(alpha = 0.08f)
+private val GlassButton = Color.White.copy(alpha = 0.06f)
+private val GlassButtonBorder = Color.White.copy(alpha = 0.10f)
+
 /**
- * Full-screen state for a screen that has nothing to show because the TV is offline.
- * Retry is focused so the remote lands on it. Pair it with [ReloadOnReconnect] placed
- * outside the offline branch, since this leaves composition the moment the TV reconnects.
+ * Full-screen state for a screen that has nothing to show because the TV is offline: a
+ * themed diagonal gradient, the message and actions on the left, and things to try on a
+ * glass panel on the right. Retry is focused so the remote lands on it. Pair it with
+ * [ReloadOnReconnect] placed outside the offline branch, since this leaves composition the
+ * moment the TV reconnects.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -126,65 +157,239 @@ fun OfflineState(
         onDispose { visibleOfflineStates.intValue-- }
     }
 
-    Column(
-        modifier = modifier.fillMaxSize().padding(horizontal = NuvioTheme.spacing.xxl),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+    val accent = NuvioTheme.palette.secondary
+    val background = NuvioTheme.colors.Background
+    val error = NuvioTheme.colors.Error
+
+    Row(
+        modifier = modifier
+            .fillMaxSize()
+            .offlineGradientBackground(accent = accent, base = background, warning = error)
+            .padding(horizontal = 72.dp, vertical = 48.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(56.dp)
+    ) {
+        Column(modifier = Modifier.weight(1.1f)) {
+            BrandWordmark(modifier = Modifier.height(30.dp), alpha = 0.9f)
+            Spacer(modifier = Modifier.height(36.dp))
+            OfflineGlyph(tint = error)
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = stringResource(R.string.offline_page_title),
+                style = MaterialTheme.typography.displayLarge.copy(
+                    fontSize = 40.sp,
+                    lineHeight = 46.sp,
+                    fontWeight = FontWeight.SemiBold
+                ),
+                color = NuvioTheme.colors.TextPrimary
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                text = stringResource(R.string.offline_page_body),
+                style = MaterialTheme.typography.bodyLarge,
+                color = NuvioTheme.colors.TextSecondary,
+                modifier = Modifier.widthIn(max = 460.dp)
+            )
+            Spacer(modifier = Modifier.height(32.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)) {
+                OfflineActionButton(
+                    label = stringResource(R.string.action_retry),
+                    icon = Icons.Default.Refresh,
+                    onClick = onRetry,
+                    modifier = Modifier.focusRequester(retryFocus)
+                )
+                OfflineActionButton(
+                    label = stringResource(R.string.offline_network_settings),
+                    icon = Icons.Default.Settings,
+                    onClick = { openNetworkSettings(context) }
+                )
+            }
+            Spacer(modifier = Modifier.height(28.dp))
+            CheckingStatusLine()
+        }
+
+        OfflineTipsPanel(modifier = Modifier.weight(0.9f))
+    }
+}
+
+/**
+ * The sign-in screen's 122° diagonal, tinted with the active theme's accent and a faint warm
+ * glow behind the glyph so the page reads as "something is wrong" without shouting.
+ */
+private fun Modifier.offlineGradientBackground(accent: Color, base: Color, warning: Color): Modifier =
+    drawWithCache {
+        val top = accent.copy(alpha = 0.20f).compositeOver(base)
+        val mid = accent.copy(alpha = 0.07f).compositeOver(base)
+        val diagonal = Brush.linearGradient(
+            colorStops = arrayOf(
+                0f to top,
+                0.30f to mid,
+                0.62f to base,
+                1f to Color.Black
+            ),
+            start = Offset(0f, 0f),
+            end = Offset(size.width, size.height)
+        )
+        val glow = Brush.radialGradient(
+            colors = listOf(warning.copy(alpha = 0.10f), Color.Transparent),
+            center = Offset(size.width * 0.16f, size.height * 0.42f),
+            radius = max(size.width, size.height) * 0.38f
+        )
+        onDrawBehind {
+            drawRect(diagonal)
+            drawRect(glow)
+        }
+    }
+
+@Composable
+private fun OfflineGlyph(tint: Color) {
+    Box(
+        modifier = Modifier
+            .size(72.dp)
+            .background(tint.copy(alpha = 0.12f), CircleShape)
+            .border(1.dp, tint.copy(alpha = 0.30f), CircleShape),
+        contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = Icons.Default.SignalWifiOff,
             contentDescription = null,
-            modifier = Modifier.size(80.dp),
-            tint = NuvioTheme.colors.TextTertiary
+            tint = tint,
+            modifier = Modifier.size(34.dp)
         )
-        Spacer(modifier = Modifier.height(NuvioTheme.spacing.xl))
-        Text(
-            text = stringResource(R.string.offline_title),
-            style = MaterialTheme.typography.headlineSmall,
-            color = NuvioTheme.colors.TextPrimary,
-            textAlign = TextAlign.Center
+    }
+}
+
+/** "Checking for a connection…" with a softly pulsing dot, so the page never looks stuck. */
+@Composable
+private fun CheckingStatusLine() {
+    val pulse by rememberInfiniteTransition(label = "offlinePulse").animateFloat(
+        initialValue = 0.25f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse),
+        label = "offlinePulseAlpha"
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .alpha(pulse)
+                .background(NuvioTheme.colors.Warning, CircleShape)
         )
-        Spacer(modifier = Modifier.height(NuvioTheme.spacing.sm))
+        Spacer(modifier = Modifier.width(10.dp))
         Text(
-            text = stringResource(R.string.offline_subtitle),
+            text = stringResource(R.string.offline_status_checking),
             style = MaterialTheme.typography.bodyMedium,
-            color = NuvioTheme.colors.TextSecondary,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.widthIn(max = 560.dp)
+            color = NuvioTheme.colors.TextTertiary
         )
-        Spacer(modifier = Modifier.height(NuvioTheme.spacing.lg))
-        Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)) {
-            OfflineActionButton(
-                label = stringResource(R.string.action_retry),
-                onClick = onRetry,
-                modifier = Modifier.focusRequester(retryFocus)
+    }
+}
+
+@Composable
+private fun OfflineTipsPanel(modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(28.dp)
+    Column(
+        modifier = modifier
+            .background(GlassPane, shape)
+            .border(1.dp, GlassBorder, shape)
+            .padding(horizontal = 32.dp, vertical = 30.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.offline_tips_title),
+            style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 1.2.sp),
+            color = NuvioTheme.colors.TextTertiary
+        )
+        Spacer(modifier = Modifier.height(22.dp))
+        OfflineTip(
+            icon = Icons.Default.Wifi,
+            title = stringResource(R.string.offline_tip_connection_title),
+            body = stringResource(R.string.offline_tip_connection_body)
+        )
+        TipDivider()
+        OfflineTip(
+            icon = Icons.Default.Router,
+            title = stringResource(R.string.offline_tip_router_title),
+            body = stringResource(R.string.offline_tip_router_body)
+        )
+        TipDivider()
+        OfflineTip(
+            icon = Icons.Default.Settings,
+            title = stringResource(R.string.offline_tip_settings_title),
+            body = stringResource(R.string.offline_tip_settings_body)
+        )
+    }
+}
+
+@Composable
+private fun TipDivider() {
+    Box(
+        modifier = Modifier
+            .padding(vertical = 18.dp)
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(GlassBorder)
+    )
+}
+
+@Composable
+private fun OfflineTip(icon: ImageVector, title: String, body: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(GlassButton, RoundedCornerShape(12.dp))
+                .border(1.dp, GlassBorder, RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = NuvioTheme.colors.TextSecondary,
+                modifier = Modifier.size(20.dp)
             )
-            OfflineActionButton(
-                label = stringResource(R.string.offline_network_settings),
-                onClick = { openNetworkSettings(context) }
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Column {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                color = NuvioTheme.colors.TextPrimary
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodySmall,
+                color = NuvioTheme.colors.TextSecondary
             )
         }
     }
 }
 
+/** Same pill as the sign-in screen: glass at rest, solid white with black text when focused. */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun OfflineActionButton(
     label: String,
+    icon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val shape = RoundedCornerShape(16.dp)
     Button(
         onClick = onClick,
         modifier = modifier,
         colors = ButtonDefaults.colors(
-            containerColor = NuvioTheme.colors.BackgroundCard,
+            containerColor = GlassButton,
             contentColor = NuvioTheme.colors.TextPrimary,
-            focusedContainerColor = NuvioTheme.colors.FocusBackground,
-            focusedContentColor = NuvioTheme.colors.Primary
+            focusedContainerColor = Color.White,
+            focusedContentColor = Color.Black
         ),
-        shape = ButtonDefaults.shape(RoundedCornerShape(NuvioTheme.radii.md))
+        shape = ButtonDefaults.shape(shape),
+        border = ButtonDefaults.border(
+            border = Border(border = BorderStroke(1.dp, GlassButtonBorder), shape = shape)
+        )
     ) {
+        Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(modifier = Modifier.width(8.dp))
         Text(label)
     }
 }
@@ -195,7 +400,6 @@ private enum class BannerState { Hidden, Offline, BackOnline }
  * App-wide pill at the top of the screen while the TV is offline, then a short "Back online"
  * when it reconnects. It never takes focus, so D-pad navigation underneath is unaffected.
  */
-@OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun OfflineBanner(
     suppressed: Boolean,
@@ -224,37 +428,61 @@ fun OfflineBanner(
             enter = fadeIn(tween(duration)) + slideInVertically(tween(duration)) { -it },
             exit = fadeOut(tween(duration)) + slideOutVertically(tween(duration)) { -it }
         ) {
-            val isOffline = shown == BannerState.Offline
-            val accent = if (isOffline) NuvioTheme.colors.Error else NuvioTheme.colors.Success
-            val pill = RoundedCornerShape(NuvioTheme.radii.full)
-            Row(
+            BannerPill(isOffline = shown == BannerState.Offline)
+        }
+    }
+}
+
+@Composable
+private fun BannerPill(isOffline: Boolean) {
+    val accent = if (isOffline) NuvioTheme.colors.Error else NuvioTheme.colors.Success
+    val pill = RoundedCornerShape(NuvioTheme.radii.full)
+    val surface = NuvioTheme.colors.Menu
+    Row(
+        modifier = Modifier
+            .padding(top = 20.dp)
+            .shadow(elevation = 18.dp, shape = pill, ambientColor = Color.Black, spotColor = Color.Black)
+            .background(
+                Brush.horizontalGradient(
+                    listOf(accent.copy(alpha = 0.16f).compositeOver(surface), surface)
+                ),
+                pill
+            )
+            .border(1.dp, Color.White.copy(alpha = 0.08f), pill)
+            .padding(start = 8.dp, end = 20.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(30.dp)
+                .background(accent.copy(alpha = 0.18f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (isOffline) Icons.Default.SignalWifiOff else Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = stringResource(if (isOffline) R.string.offline_title else R.string.offline_back_online),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = NuvioTheme.colors.TextPrimary
+        )
+        if (isOffline) {
+            Box(
                 modifier = Modifier
-                    .padding(top = NuvioTheme.spacing.lg)
-                    .background(NuvioTheme.colors.Menu, pill)
-                    .border(1.dp, accent.copy(alpha = 0.45f), pill)
-                    .padding(horizontal = NuvioTheme.spacing.lg, vertical = NuvioTheme.spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.sm)
-            ) {
-                Icon(
-                    imageVector = if (isOffline) Icons.Default.SignalWifiOff else Icons.Default.Wifi,
-                    contentDescription = null,
-                    tint = accent,
-                    modifier = Modifier.size(20.dp)
-                )
-                Text(
-                    text = stringResource(if (isOffline) R.string.offline_title else R.string.offline_back_online),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = NuvioTheme.colors.TextPrimary
-                )
-                if (isOffline) {
-                    Text(
-                        text = stringResource(R.string.offline_banner_reconnecting),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = NuvioTheme.colors.TextSecondary
-                    )
-                }
-            }
+                    .padding(horizontal = 10.dp)
+                    .size(3.dp)
+                    .background(NuvioTheme.colors.TextTertiary, CircleShape)
+            )
+            Text(
+                text = stringResource(R.string.offline_banner_reconnecting),
+                style = MaterialTheme.typography.labelLarge,
+                color = NuvioTheme.colors.TextSecondary
+            )
         }
     }
 }
