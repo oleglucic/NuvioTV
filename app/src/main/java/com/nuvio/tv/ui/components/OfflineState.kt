@@ -8,10 +8,10 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -63,6 +63,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -211,37 +212,56 @@ fun OfflineFullscreenHost(
 @Composable
 private fun OfflinePage(backOnline: Boolean) {
     val amoled = isAmoled()
-    val morph = tween<Color>(MORPH_MS)
-    // One light that travels: from the top-left corner in the theme accent while offline, to
-    // the centre in green once back online. The warm warning glow fades out as it moves.
-    val lightColor by animateColorAsState(
-        if (backOnline) NuvioTheme.colors.Success.copy(alpha = 0.24f)
-        else NuvioTheme.palette.secondary.copy(alpha = 0.22f),
-        morph,
-        label = "offlineLightColor"
+    // One progress value (0 offline, 1 back online) drives every background layer through
+    // graphicsLayer, so the morph only moves and fades cached layers: no per-frame shaders,
+    // measuring or layout, which low-end TV GPUs cannot keep up with.
+    val progress by animateFloatAsState(
+        targetValue = if (backOnline) 1f else 0f,
+        animationSpec = tween(MORPH_MS, easing = FastOutSlowInEasing),
+        label = "offlineMorph"
     )
-    val lightX by animateFloatAsState(if (backOnline) 0.5f else 0f, tween(MORPH_MS), label = "offlineLightX")
-    val lightY by animateFloatAsState(if (backOnline) 0.45f else 0f, tween(MORPH_MS), label = "offlineLightY")
-    val lightRadius by animateFloatAsState(if (backOnline) 0.6f else 1.05f, tween(MORPH_MS), label = "offlineLightR")
-    val warningAlpha by animateFloatAsState(if (backOnline) 0f else 0.10f, tween(MORPH_MS), label = "offlineWarnA")
-
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .offlineGradientBackground(
-                base = NuvioTheme.colors.Background,
-                light = lightColor,
-                lightCenter = Offset(lightX, lightY),
-                lightRadius = lightRadius,
-                warning = NuvioTheme.colors.Error.copy(alpha = warningAlpha),
-                amoled = amoled
-            )
+            .background(NuvioTheme.colors.Background)
     ) {
+        // AMOLED Mode keeps the background pure black, like every other screen.
+        if (!amoled) {
+            val accent = NuvioTheme.palette.secondary.copy(alpha = 0.22f)
+            val success = NuvioTheme.colors.Success.copy(alpha = 0.24f)
+            val warning = NuvioTheme.colors.Error.copy(alpha = 0.10f)
+            GlowLayer(
+                color = warning,
+                modifier = Modifier.graphicsLayer {
+                    alpha = 1f - progress
+                    translationX = -size.width * 0.34f
+                    translationY = -size.height * 0.05f
+                    scaleX = 0.7f
+                    scaleY = 0.7f
+                }
+            )
+            // The travelling light: drawn once, centred. Offline it sits on the top-left corner
+            // at 1.75x; back online it rests in the centre at 1x and turns green.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        translationX = lerp(-size.width * 0.5f, 0f, progress)
+                        translationY = lerp(-size.height * 0.5f, -size.height * 0.05f, progress)
+                        val scale = lerp(1.75f, 1f, progress)
+                        scaleX = scale
+                        scaleY = scale
+                    }
+            ) {
+                GlowLayer(color = accent, modifier = Modifier.graphicsLayer { alpha = 1f - progress })
+                GlowLayer(color = success, modifier = Modifier.graphicsLayer { alpha = progress })
+            }
+        }
         AnimatedContent(
             targetState = backOnline,
             transitionSpec = {
-                (fadeIn(tween(MORPH_MS, delayMillis = MORPH_MS / 4)) +
-                    scaleIn(tween(MORPH_MS, delayMillis = MORPH_MS / 4), initialScale = 0.94f)) togetherWith
+                // Sequential, not overlapping: never composite two full layouts at once.
+                fadeIn(tween(MORPH_MS / 2, delayMillis = MORPH_MS / 2)) togetherWith
                     fadeOut(tween(MORPH_MS / 2))
             },
             label = "offlinePageContent"
@@ -250,6 +270,34 @@ private fun OfflinePage(backOnline: Boolean) {
         }
     }
 }
+
+/**
+ * A soft radial light centred in its bounds, drawn over a 3x area so it is never cut off
+ * when its layer is scaled or moved. The brush is built once per size.
+ */
+@Composable
+private fun GlowLayer(color: Color, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .drawWithCache {
+                val brush = Brush.radialGradient(
+                    colorStops = arrayOf(
+                        0f to color,
+                        0.45f to color.copy(alpha = color.alpha * 0.35f),
+                        1f to Color.Transparent
+                    ),
+                    center = Offset(size.width / 2f, size.height / 2f),
+                    radius = max(size.width, size.height) * 0.6f
+                )
+                onDrawBehind {
+                    drawRect(brush, topLeft = Offset(-size.width, -size.height), size = size * 3f)
+                }
+            }
+    )
+}
+
+private fun lerp(start: Float, stop: Float, fraction: Float): Float = start + (stop - start) * fraction
 
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
@@ -362,43 +410,6 @@ private fun highlighted(text: String, word: String, color: Color): AnnotatedStri
         if (start >= 0) addStyle(SpanStyle(color = color), start, start + word.length)
     }
 }
-
-/**
- * The theme background lit by a single soft [light] at [lightCenter] (fractions of the size),
- * plus a faint [warning] glow on the left while offline. In AMOLED Mode the background is pure
- * black, like every other screen.
- */
-private fun Modifier.offlineGradientBackground(
-    base: Color,
-    light: Color,
-    lightCenter: Offset,
-    lightRadius: Float,
-    warning: Color,
-    amoled: Boolean,
-): Modifier =
-    drawWithCache {
-        if (amoled) return@drawWithCache onDrawBehind { drawRect(Color.Black) }
-        val extent = max(size.width, size.height)
-        val lightBrush = Brush.radialGradient(
-            colorStops = arrayOf(
-                0f to light,
-                0.45f to light.copy(alpha = light.alpha * 0.35f),
-                1f to Color.Transparent
-            ),
-            center = Offset(size.width * lightCenter.x, size.height * lightCenter.y),
-            radius = extent * lightRadius
-        )
-        val warningBrush = Brush.radialGradient(
-            colors = listOf(warning, Color.Transparent),
-            center = Offset(size.width * 0.16f, size.height * 0.45f),
-            radius = extent * 0.42f
-        )
-        onDrawBehind {
-            drawRect(base)
-            drawRect(lightBrush)
-            if (warning.alpha > 0f) drawRect(warningBrush)
-        }
-    }
 
 @Composable
 private fun OfflineTipsPanel(blackSurfaces: Boolean, modifier: Modifier = Modifier) {
@@ -563,16 +574,14 @@ private fun BannerPill(isOffline: Boolean) {
                 pill
             )
             .border(1.dp, Color.White.copy(alpha = 0.08f), pill)
-            .animateContentSize(tween(duration))
             .padding(start = 8.dp, end = 20.dp, top = 8.dp, bottom = 8.dp)
     ) {
         AnimatedContent(
             targetState = isOffline,
             transitionSpec = {
-                (fadeIn(tween(duration, delayMillis = duration / 3)) +
-                    slideInVertically(tween(duration)) { it / 2 }) togetherWith
-                    (fadeOut(tween(duration / 2)) + slideOutVertically(tween(duration / 2)) { -it / 2 }) using
-                    SizeTransform(clip = false)
+                fadeIn(tween(duration / 2, delayMillis = duration / 3)) togetherWith
+                    fadeOut(tween(duration / 3)) using
+                    SizeTransform(clip = false) { _, _ -> tween(duration, easing = FastOutSlowInEasing) }
             },
             label = "bannerContent"
         ) { offline ->
