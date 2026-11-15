@@ -37,7 +37,7 @@ fun ErrorState(
 ) {
     ReloadOnReconnect(onRetry)
     val offline by rememberDeviceOffline()
-    if (offline) {
+    if (offline || rememberOfflinePageVisible()) {
         OfflineState(modifier = modifier)
         return
     }

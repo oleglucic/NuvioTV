@@ -49,6 +49,7 @@ import com.nuvio.tv.ui.components.ErrorState
 import com.nuvio.tv.ui.components.OfflineState
 import com.nuvio.tv.ui.components.ReloadOnReconnect
 import com.nuvio.tv.ui.components.rememberDeviceOffline
+import com.nuvio.tv.ui.components.rememberOfflinePageVisible
 import com.nuvio.tv.ui.components.LoadingIndicator
 import com.nuvio.tv.ui.components.LocalStartupLoadingState
 import com.nuvio.tv.ui.components.LocalStartupSplashEnabled
@@ -243,7 +244,7 @@ fun HomeScreen(
         uiState.heroItems.isNotEmpty() ||
         hasCollectionContent
     val deviceOffline by rememberDeviceOffline()
-    val showOfflineState = deviceOffline && !hasAnyContent
+    val showOfflineState = (deviceOffline || rememberOfflinePageVisible()) && !hasAnyContent
     ReloadOnReconnect {
         if (!hasAnyContent || uiState.error != null) viewModel.onEvent(HomeEvent.OnRetry)
     }
