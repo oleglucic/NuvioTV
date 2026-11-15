@@ -39,7 +39,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SignalWifiOff
@@ -70,6 +70,9 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -143,42 +146,46 @@ private val GlassButtonBorder = Color.White.copy(alpha = 0.10f)
 
 /**
  * Full-screen state for a screen that has nothing to show because the TV is offline: a
- * themed diagonal gradient, the message and actions on the left, and things to try on a
- * glass panel on the right. Retry is focused so the remote lands on it. Pair it with
- * [ReloadOnReconnect] placed outside the offline branch, since this leaves composition the
- * moment the TV reconnects.
+ * themed diagonal gradient (pure black in AMOLED mode), the theme wordmark, the message and
+ * Network settings on the left, and things to try on a glass panel on the right. There is
+ * no Retry: pair it with [ReloadOnReconnect] placed outside the offline branch, which
+ * reloads the screen when the TV reconnects and this leaves composition.
  */
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 fun OfflineState(
-    onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val retryFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { retryFocus.requestFocus() } }
+    val settingsFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { settingsFocus.requestFocus() } }
     DisposableEffect(Unit) {
         visibleOfflineStates.intValue++
         onDispose { visibleOfflineStates.intValue-- }
     }
 
-    val accent = NuvioTheme.palette.secondary
-    val background = NuvioTheme.colors.Background
+    val amoled = isAmoled()
     val error = NuvioTheme.colors.Error
 
     Row(
         modifier = modifier
             .fillMaxSize()
-            .offlineGradientBackground(accent = accent, base = background, warning = error)
+            .offlineGradientBackground(
+                accent = NuvioTheme.palette.secondary,
+                base = NuvioTheme.colors.Background,
+                warning = error,
+                amoled = amoled
+            )
             .padding(horizontal = 96.dp, vertical = 64.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(72.dp)
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            OfflineEyebrow(color = error)
-            Spacer(modifier = Modifier.height(18.dp))
+            // Follows the selected theme (Gold, Jade, Rose Gold, Arctic Blue, Graphite, default).
+            BrandWordmark(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(40.dp))
             Text(
-                text = stringResource(R.string.offline_page_title),
+                text = offlineTitle(highlight = error),
                 style = MaterialTheme.typography.displayLarge.copy(
                     fontSize = 44.sp,
                     lineHeight = 50.sp,
@@ -194,22 +201,34 @@ fun OfflineState(
                 modifier = Modifier.widthIn(max = 420.dp)
             )
             Spacer(modifier = Modifier.height(40.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)) {
-                OfflineActionButton(
-                    label = stringResource(R.string.action_retry),
-                    icon = Icons.Default.Refresh,
-                    onClick = onRetry,
-                    modifier = Modifier.focusRequester(retryFocus)
-                )
-                OfflineActionButton(
-                    label = stringResource(R.string.offline_network_settings),
-                    icon = Icons.Default.Settings,
-                    onClick = { openNetworkSettings(context) }
-                )
-            }
+            // No Retry: the page reloads on its own the moment the connection is back.
+            OfflineActionButton(
+                label = stringResource(R.string.offline_network_settings),
+                icon = Icons.Default.Settings,
+                onClick = { openNetworkSettings(context) },
+                modifier = Modifier.focusRequester(settingsFocus)
+            )
         }
 
-        OfflineTipsPanel(modifier = Modifier.width(380.dp))
+        OfflineTipsPanel(amoled = amoled, modifier = Modifier.width(380.dp))
+    }
+}
+
+/** AMOLED mode makes the background pure black; offline surfaces follow it. */
+@Composable
+private fun isAmoled(): Boolean = NuvioTheme.colors.Background == Color.Black
+
+/** "You're offline" with the highlight word in the error colour, found in any translation. */
+@Composable
+private fun offlineTitle(highlight: Color): AnnotatedString {
+    val title = stringResource(R.string.offline_page_title)
+    val word = stringResource(R.string.offline_page_title_highlight)
+    val start = title.indexOf(word, ignoreCase = true)
+    return buildAnnotatedString {
+        append(title)
+        if (word.isNotBlank() && start >= 0) {
+            addStyle(SpanStyle(color = highlight), start, start + word.length)
+        }
     }
 }
 
@@ -217,8 +236,14 @@ fun OfflineState(
  * The sign-in screen's 122° diagonal, tinted with the active theme's accent and a faint warm
  * glow behind the glyph so the page reads as "something is wrong" without shouting.
  */
-private fun Modifier.offlineGradientBackground(accent: Color, base: Color, warning: Color): Modifier =
+private fun Modifier.offlineGradientBackground(
+    accent: Color,
+    base: Color,
+    warning: Color,
+    amoled: Boolean,
+): Modifier =
     drawWithCache {
+        if (amoled) return@drawWithCache onDrawBehind { drawRect(Color.Black) }
         val top = accent.copy(alpha = 0.20f).compositeOver(base)
         val mid = accent.copy(alpha = 0.07f).compositeOver(base)
         val diagonal = Brush.linearGradient(
@@ -242,37 +267,12 @@ private fun Modifier.offlineGradientBackground(accent: Color, base: Color, warni
         }
     }
 
-/** Pulsing dot and a quiet label above the title: says what is wrong and that it is live. */
 @Composable
-private fun OfflineEyebrow(color: Color) {
-    val pulse by rememberInfiniteTransition(label = "offlinePulse").animateFloat(
-        initialValue = 0.3f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse),
-        label = "offlinePulseAlpha"
-    )
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .alpha(pulse)
-                .background(color, CircleShape)
-        )
-        Spacer(modifier = Modifier.width(10.dp))
-        Text(
-            text = stringResource(R.string.offline_title).uppercase(),
-            style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 1.4.sp),
-            color = color.copy(alpha = 0.9f)
-        )
-    }
-}
-
-@Composable
-private fun OfflineTipsPanel(modifier: Modifier = Modifier) {
+private fun OfflineTipsPanel(amoled: Boolean, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(28.dp)
     Column(
         modifier = modifier
-            .background(GlassPane, shape)
+            .background(if (amoled) Color.Black else GlassPane, shape)
             .border(1.dp, GlassBorder, shape)
             .padding(horizontal = 28.dp, vertical = 28.dp),
         verticalArrangement = Arrangement.spacedBy(22.dp)
@@ -293,9 +293,9 @@ private fun OfflineTipsPanel(modifier: Modifier = Modifier) {
             body = stringResource(R.string.offline_tip_router_body)
         )
         OfflineTip(
-            icon = Icons.Default.Settings,
-            title = stringResource(R.string.offline_tip_settings_title),
-            body = stringResource(R.string.offline_tip_settings_body)
+            icon = Icons.Default.Devices,
+            title = stringResource(R.string.offline_tip_other_device_title),
+            body = stringResource(R.string.offline_tip_other_device_body)
         )
     }
 }
@@ -414,7 +414,7 @@ private fun BannerPill(isOffline: Boolean) {
     val targetAccent = if (isOffline) NuvioTheme.colors.Error else NuvioTheme.colors.Success
     val accent by animateColorAsState(targetAccent, tween(duration), label = "bannerAccent")
     val pill = RoundedCornerShape(NuvioTheme.radii.full)
-    val surface = NuvioTheme.colors.Menu
+    val surface = if (isAmoled()) Color.Black else NuvioTheme.colors.Menu
     Box(
         modifier = Modifier
             .padding(top = 20.dp)
