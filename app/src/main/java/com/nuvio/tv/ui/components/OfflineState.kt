@@ -57,6 +57,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -92,6 +93,8 @@ import com.nuvio.tv.core.network.ConnectivityMonitor
 import com.nuvio.tv.ui.theme.NuvioTheme
 import kotlin.math.max
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** The app's connectivity monitor; null in previews and tests, which then count as online. */
 val LocalConnectivityMonitor = staticCompositionLocalOf<ConnectivityMonitor?> { null }
@@ -104,6 +107,14 @@ private val offlinePageRequests = mutableIntStateOf(0)
 /** What [OfflineFullscreenHost] is showing; the banner stays out of the way while it shows. */
 private val offlinePagePhase = mutableStateOf(OfflinePagePhase.Hidden)
 
+/**
+ * Whether the full-screen offline page is up, including its "Back online" phase. A screen
+ * that asked for it keeps asking until it has content again, so the page fades out over a
+ * loaded screen instead of an empty one.
+ */
+@Composable
+fun rememberOfflinePageVisible(): Boolean = offlinePagePhase.value != OfflinePagePhase.Hidden
+
 /** Whether the TV currently has no internet (debounced). */
 @Composable
 fun rememberDeviceOffline(): State<Boolean> {
@@ -115,6 +126,10 @@ fun rememberDeviceOffline(): State<Boolean> {
 /**
  * Calls [onReconnect] once each time the TV comes back online while this is in composition.
  * Nothing runs on first composition, so a screen that is already online does not reload.
+ *
+ * The reload waits [RELOAD_AFTER_RECONNECT_MS] so the "Back online" transitions play on a
+ * quiet main thread first: a screen reload (fetches, image decodes) stalls low-end TVs for
+ * most of a second, which froze the animations when both started together.
  */
 @Composable
 fun ReloadOnReconnect(onReconnect: () -> Unit) {
@@ -122,7 +137,11 @@ fun ReloadOnReconnect(onReconnect: () -> Unit) {
     val latest by rememberUpdatedState(onReconnect)
     var wasOffline by remember { mutableStateOf(offline) }
     LaunchedEffect(offline) {
-        if (wasOffline && !offline) latest()
+        if (wasOffline && !offline) {
+            wasOffline = false
+            delay(RELOAD_AFTER_RECONNECT_MS)
+            latest()
+        }
         wasOffline = offline
     }
 }
@@ -189,9 +208,15 @@ fun OfflineFullscreenHost(
         }
     }
     // Separate effect so the reloading screen dropping its request cannot cancel the hold.
+    // Fade only once the screen behind has its content (it stopped requesting the page) and
+    // has had a moment to settle, so the fade does not run through its first heavy render.
     LaunchedEffect(phase) {
         if (phase == OfflinePagePhase.BackOnline) {
             delay(BACK_ONLINE_PAGE_HOLD_MS)
+            withTimeoutOrNull(BACK_ONLINE_PAGE_MAX_WAIT_MS) {
+                snapshotFlow { offlinePageRequests.intValue }.first { it == 0 }
+                delay(SCREEN_SETTLE_MS)
+            }
             phase = OfflinePagePhase.Hidden
         }
     }
@@ -630,5 +655,8 @@ private fun BannerPillContent(isOffline: Boolean, accent: Color) {
 
 private const val BACK_ONLINE_VISIBLE_MS = 2_500L
 private const val BACK_ONLINE_PAGE_HOLD_MS = 1_600L
+private const val BACK_ONLINE_PAGE_MAX_WAIT_MS = 6_000L
+private const val SCREEN_SETTLE_MS = 600L
+private const val RELOAD_AFTER_RECONNECT_MS = 900L
 private const val MORPH_MS = 800
 private const val PAGE_FADE_OUT_MS = 700
