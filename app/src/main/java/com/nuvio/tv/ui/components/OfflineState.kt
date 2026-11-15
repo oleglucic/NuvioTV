@@ -28,6 +28,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.SignalWifiOff
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
@@ -58,6 +60,12 @@ import kotlinx.coroutines.delay
 
 /** The app's connectivity monitor; null in previews and tests, which then count as online. */
 val LocalConnectivityMonitor = staticCompositionLocalOf<ConnectivityMonitor?> { null }
+
+/**
+ * How many full-screen [OfflineState]s are on screen. The banner hides while any is, so the
+ * user is not told twice; it still shows "Back online" when they close on reconnect.
+ */
+private val visibleOfflineStates = mutableIntStateOf(0)
 
 /** Whether the TV currently has no internet (debounced). */
 @Composable
@@ -113,6 +121,10 @@ fun OfflineState(
     val context = LocalContext.current
     val retryFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { retryFocus.requestFocus() } }
+    DisposableEffect(Unit) {
+        visibleOfflineStates.intValue++
+        onDispose { visibleOfflineStates.intValue-- }
+    }
 
     Column(
         modifier = modifier.fillMaxSize().padding(horizontal = NuvioTheme.spacing.xxl),
@@ -207,7 +219,8 @@ fun OfflineBanner(
     val duration = NuvioTheme.motion.durations.medium
     Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
         AnimatedVisibility(
-            visible = state != BannerState.Hidden && !suppressed,
+            visible = state != BannerState.Hidden && !suppressed &&
+                !(state == BannerState.Offline && visibleOfflineStates.intValue > 0),
             enter = fadeIn(tween(duration)) + slideInVertically(tween(duration)) { -it },
             exit = fadeOut(tween(duration)) + slideOutVertically(tween(duration)) { -it }
         ) {
